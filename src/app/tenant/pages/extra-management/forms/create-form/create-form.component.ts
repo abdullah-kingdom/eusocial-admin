@@ -949,15 +949,22 @@ export class CreateFormComponent implements OnInit, CreateFormCanDeactivate {
   }
 
   /**
-   * Step tabs: prior steps always; the immediate next step only when
-   * Save & continue would also allow advancing (`canProceed`).
+   * Step tabs: prior steps always; forward jumps allowed when all
+   * prerequisite steps are already valid (e.g. edit mode Step 1 → 3).
+   * Does not bypass Save/Publish validation.
    */
   canNavigateToStep(stepNum: number): boolean {
     const current = this.currentStep();
     if (stepNum <= current) {
       return true;
     }
-    return stepNum === current + 1 && this.canProceed();
+    if (stepNum === 2) {
+      return this.step1Valid();
+    }
+    if (stepNum === 3) {
+      return this.step1Valid() && this.step2Valid();
+    }
+    return false;
   }
 
   goToStep(stepNum: number): void {
