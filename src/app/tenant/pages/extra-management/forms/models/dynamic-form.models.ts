@@ -740,10 +740,14 @@ export function formatFrequencySummary(
 }
 
 export interface FormMetaConfig {
+  /** Selected job-position option IDs (not display names). */
   assignJobPosition: string[];
+  /** Selected user option IDs (not display names). */
   assignUsers: string[];
   assignMode: AssignReportMode;
+  /** Selected job-position option IDs (not display names). */
   reportJobPosition: string[];
+  /** Selected user option IDs (not display names). */
   reportUsers: string[];
   reportMode: AssignReportMode;
   frequencyJobPosition: string[];
@@ -927,22 +931,28 @@ export interface AssignReportOptions {
   jobPositions?: AssignReportOption[];
 }
 
-function resolveSelectedIds(
-  names: string[],
+/**
+ * Map selected option IDs → numeric payload IDs.
+ * Identity is always `option.id` (never display name), so duplicate names
+ * do not inflate the payload.
+ */
+export function resolveSelectedIds(
+  selectedIds: string[],
   options: AssignReportOption[] = [],
 ): number[] {
   const ids = new Set<number>();
+  const knownIds = new Set(options.map((option) => String(option.id)));
 
-  for (const name of names) {
-    if (!name) continue;
-
-    for (const option of options) {
-      if (option.name === name) {
-        const id = Number(option.id);
-        if (Number.isFinite(id)) {
-          ids.add(id);
-        }
-      }
+  for (const raw of selectedIds) {
+    if (!raw) continue;
+    const key = String(raw);
+    // Prefer known options; still accept numeric IDs when options have not loaded yet.
+    if (knownIds.size > 0 && !knownIds.has(key)) {
+      continue;
+    }
+    const id = Number(key);
+    if (Number.isFinite(id)) {
+      ids.add(id);
     }
   }
 

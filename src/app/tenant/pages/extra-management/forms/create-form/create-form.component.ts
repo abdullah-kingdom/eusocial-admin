@@ -252,9 +252,9 @@ export class CreateFormComponent implements OnInit, CreateFormCanDeactivate {
     const selected = new Set(this.meta().assignUsers);
     const opts = this.userOptions();
     const filtered = q
-      ? opts.filter((o) => o.name.toLowerCase().includes(q) || (o.jobPosition || '').toLowerCase().includes(q))
+      ? opts.filter((o) => o.name.toLowerCase().includes(q) || (o.jobPosition || '').toLowerCase().includes(q) || (o.email || '').toLowerCase().includes(q))
       : opts;
-    return filtered.map((o) => ({ ...o, selected: selected.has(o.name) }));
+    return filtered.map((o) => ({ ...o, selected: selected.has(o.id) }));
   });
 
   readonly filteredAssignPositions = computed(() => {
@@ -262,7 +262,7 @@ export class CreateFormComponent implements OnInit, CreateFormCanDeactivate {
     const selected = new Set(this.meta().assignJobPosition);
     const opts = this.jobPositionOptions();
     const filtered = q ? opts.filter((o) => o.name.toLowerCase().includes(q)) : opts;
-    return filtered.map((o) => ({ ...o, selected: selected.has(o.name) }));
+    return filtered.map((o) => ({ ...o, selected: selected.has(o.id) }));
   });
 
   readonly filteredReportUsers = computed(() => {
@@ -270,9 +270,9 @@ export class CreateFormComponent implements OnInit, CreateFormCanDeactivate {
     const selected = new Set(this.meta().reportUsers);
     const opts = this.userOptions();
     const filtered = q
-      ? opts.filter((o) => o.name.toLowerCase().includes(q) || (o.jobPosition || '').toLowerCase().includes(q))
+      ? opts.filter((o) => o.name.toLowerCase().includes(q) || (o.jobPosition || '').toLowerCase().includes(q) || (o.email || '').toLowerCase().includes(q))
       : opts;
-    return filtered.map((o) => ({ ...o, selected: selected.has(o.name) }));
+    return filtered.map((o) => ({ ...o, selected: selected.has(o.id) }));
   });
 
   readonly filteredReportPositions = computed(() => {
@@ -280,7 +280,7 @@ export class CreateFormComponent implements OnInit, CreateFormCanDeactivate {
     const selected = new Set(this.meta().reportJobPosition);
     const opts = this.jobPositionOptions();
     const filtered = q ? opts.filter((o) => o.name.toLowerCase().includes(q)) : opts;
-    return filtered.map((o) => ({ ...o, selected: selected.has(o.name) }));
+    return filtered.map((o) => ({ ...o, selected: selected.has(o.id) }));
   });
 
   /** Assign: Job Positions disabled while any User is selected. */
@@ -626,8 +626,16 @@ export class CreateFormComponent implements OnInit, CreateFormCanDeactivate {
   readonly assignFlowItems = computed(() => {
     const m = this.meta();
     return [
-      ...m.assignUsers.map((name) => ({ name, kind: 'user' as const })),
-      ...m.assignJobPosition.map((name) => ({ name, kind: 'team' as const })),
+      ...m.assignUsers.map((id) => ({
+        id,
+        name: this.userOptionLabel(id),
+        kind: 'user' as const,
+      })),
+      ...m.assignJobPosition.map((id) => ({
+        id,
+        name: this.jobPositionOptionLabel(id),
+        kind: 'team' as const,
+      })),
     ];
   });
 
@@ -635,8 +643,16 @@ export class CreateFormComponent implements OnInit, CreateFormCanDeactivate {
   readonly reportFlowItems = computed(() => {
     const m = this.meta();
     return [
-      ...m.reportUsers.map((name) => ({ name, kind: 'user' as const })),
-      ...m.reportJobPosition.map((name) => ({ name, kind: 'team' as const })),
+      ...m.reportUsers.map((id) => ({
+        id,
+        name: this.userOptionLabel(id),
+        kind: 'user' as const,
+      })),
+      ...m.reportJobPosition.map((id) => ({
+        id,
+        name: this.jobPositionOptionLabel(id),
+        kind: 'team' as const,
+      })),
     ];
   });
 
@@ -867,8 +883,18 @@ export class CreateFormComponent implements OnInit, CreateFormCanDeactivate {
         altInput: true,
         altFormat: 'F j, Y',
         allowInput: false,
+        // Keep a saved past start date visible while minDate still blocks new past picks
+        // (same pattern as At Once).
+        allowInvalidPreload: true,
         minDate: 'today',
         defaultDate: startValue || undefined,
+        onOpen: (_selectedDates, _dateStr, instance) => {
+          const savedDate = this.frequencyForm.controls.startDate.value;
+          const today = instance.formatDate(new Date(), 'Y-m-d');
+          if (savedDate && savedDate < today) {
+            instance.jumpToDate(today);
+          }
+        },
         onChange: (_selectedDates, dateStr) => {
           this.onFrequencyStartDateChange(dateStr || null);
         },
@@ -879,6 +905,7 @@ export class CreateFormComponent implements OnInit, CreateFormCanDeactivate {
         altInput: true,
         altFormat: 'F j, Y',
         allowInput: false,
+        allowInvalidPreload: true,
         minDate: endMinDate,
         defaultDate: endValue || undefined,
         onChange: (_selectedDates, dateStr) => {
@@ -887,7 +914,14 @@ export class CreateFormComponent implements OnInit, CreateFormCanDeactivate {
         onOpen: (_selectedDates, _dateStr, instance) => {
           const minEnd = this.resolveCurrentMinEndDate();
           const currentEnd = this.frequencyForm.controls.endDate.value;
-          const focusDate = currentEnd || minEnd;
+          const today = instance.formatDate(new Date(), 'Y-m-d');
+          // Show a selectable month; do not jump the calendar back to a past saved end.
+          const focusDate =
+            currentEnd && minEnd && currentEnd < minEnd
+              ? minEnd
+              : currentEnd && currentEnd < today
+                ? today
+                : currentEnd || minEnd;
           if (focusDate) {
             instance.jumpToDate(focusDate, false);
           }
@@ -1461,7 +1495,7 @@ export class CreateFormComponent implements OnInit, CreateFormCanDeactivate {
     this.frequencyForm.controls.times.setValue(scheduleTimes, { emitEvent: true });
   }
 
-  /** Map saved Assign/Report ids to display names once options are available. */
+  /** Restore saved Assign/Report option IDs into meta once options are available. */
   private applyLoadedMeta(): void {
     const schema = this.loadedSchema;
     if (!schema) return;
@@ -1470,12 +1504,12 @@ export class CreateFormComponent implements OnInit, CreateFormCanDeactivate {
     const positionOptions = this.jobPositionOptions();
 
     const assign = this.enforceExclusiveUserOrPosition(
-      this.resolveSelectedNames(schema.assign?.users, userOptions),
-      this.resolveSelectedNames(schema.assign?.jobPosition, positionOptions),
+      this.resolveSelectedOptionIds(schema.assign?.users, userOptions),
+      this.resolveSelectedOptionIds(schema.assign?.jobPosition, positionOptions),
     );
     const report = this.enforceExclusiveUserOrPosition(
-      this.resolveSelectedNames(schema.report?.users, userOptions),
-      this.resolveSelectedNames(schema.report?.jobPosition, positionOptions),
+      this.resolveSelectedOptionIds(schema.report?.users, userOptions),
+      this.resolveSelectedOptionIds(schema.report?.jobPosition, positionOptions),
     );
 
     this.meta.update((current) => ({
@@ -1512,14 +1546,26 @@ export class CreateFormComponent implements OnInit, CreateFormCanDeactivate {
     return { users, positions };
   }
 
-  private resolveSelectedNames(
+  /** Keep saved IDs as selection keys (never display names). */
+  private resolveSelectedOptionIds(
     ids: number[] | null | undefined,
     options: { id: string; name: string }[],
   ): string[] {
     if (!ids || !ids.length) return [];
-    return ids
-      .map((id) => options.find((option) => Number(option.id) === id)?.name)
-      .filter((name): name is string => !!name);
+    return ids.map((id) => {
+      const match = options.find((option) => Number(option.id) === id);
+      return match ? String(match.id) : String(id);
+    });
+  }
+
+  /** Chip / flow label for a selected user ID. */
+  userOptionLabel(id: string): string {
+    return this.userOptions().find((option) => option.id === id)?.name || id;
+  }
+
+  /** Chip / flow label for a selected job-position ID. */
+  jobPositionOptionLabel(id: string): string {
+    return this.jobPositionOptions().find((option) => option.id === id)?.name || id;
   }
 
   /** Restore Country → State → City cascading on the loaded rows. */
