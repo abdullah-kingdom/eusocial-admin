@@ -2074,6 +2074,11 @@ export class FieldSettingsComponent implements OnDestroy {
       return [];
     }
 
+    // Static select options persist/compare by display label. Always use the
+    // label as the predicate value so CL matches runtime FormControl values.
+    const useStaticLabelValue =
+      source.type === 'select' && source.optionSource?.type !== 'dynamic';
+
     return source.options
       .map((option, index) => {
         if (typeof option === 'string' || typeof option === 'number') {
@@ -2087,7 +2092,9 @@ export class FieldSettingsComponent implements OnDestroy {
 
         return {
           label: normalized.label,
-          value: normalized.value ?? index,
+          value: useStaticLabelValue
+            ? normalized.label
+            : (normalized.value ?? index),
         };
       })
       .filter((option): option is { label: string; value: string | number } => !!option);

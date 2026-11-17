@@ -68,6 +68,12 @@ export function normalizeFieldOptions(
     .filter((option): option is FieldOption => option !== null);
 }
 
+/**
+ * Static select options use the display label as the persisted/runtime value.
+ * Templates and Conditional Logic store labels (e.g. "Room Maintenance"); the
+ * FormControl must emit the same string so equals/notEquals match. Do not
+ * invent a separate slug keyspace here.
+ */
 export function normalizeStaticSelectFieldOptions(
   options: unknown[] | undefined | null
 ): FieldOption[] {
@@ -95,7 +101,7 @@ export function normalizeStaticSelectFieldOptions(
   return labels.map((label, index) => ({
     id: index + 1,
     label,
-    value: slugifyOptionValue(label) || `option_${index + 1}`,
+    value: label,
     sortOrder: index,
   }));
 }
