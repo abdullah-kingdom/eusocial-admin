@@ -324,6 +324,9 @@ export function getOptionValue(
   if (typeof option === 'string' || typeof option === 'number') {
     return option;
   }
+  if (option.id != null && String(option.id).trim() !== '') {
+    return option.id;
+  }
   return option.value ?? index;
 }
 
@@ -541,17 +544,15 @@ export function formatListingCellValue(
 
     return value
       .map((item) => {
-        const option = field.options?.find((opt) =>
-          typeof opt === 'string' || typeof opt === 'number'
-            ? String(opt) === String(item)
-            : String(opt.value) === String(item),
+        const option = field.options?.find(
+          (opt, index) => String(getOptionValue(opt, index)) === String(item),
         );
 
-        if (typeof option === 'string' || typeof option === 'number') {
-          return String(option);
+        if (option === undefined) {
+          return String(item);
         }
 
-        return option?.label ?? String(item);
+        return getOptionLabel(option);
       })
       .filter(Boolean) as string[];
   }

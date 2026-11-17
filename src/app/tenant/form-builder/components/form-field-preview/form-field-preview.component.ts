@@ -21,8 +21,7 @@ import {
 } from '../../utils/field-type.utils';
 import {
   normalizeFieldOptions,
-  normalizeCheckboxFieldOptions,
-  normalizeStaticSelectFieldOptions,
+  normalizeStaticChoiceOptions,
 } from '../../utils/field-options.utils';
 import { resolveFieldOptionSource } from '../../utils/option-source.utils';
 import {
@@ -153,7 +152,7 @@ export class FormFieldPreviewComponent implements OnChanges {
   }
 
   trackByOptionValue(_index: number, option: FieldOption): string | number {
-    return option.value;
+    return option.id ?? option.value;
   }
 
   isCheckboxChecked(value: string | number): boolean {
@@ -238,8 +237,8 @@ export class FormFieldPreviewComponent implements OnChanges {
   private normalizeStaticOptions(
     options: Array<string | number | FieldOption> | undefined,
   ): FieldOption[] {
-    if (this.isCheckboxField) {
-      return normalizeCheckboxFieldOptions(options);
+    if (this.isCheckboxField || this.field.type === 'radio') {
+      return normalizeStaticChoiceOptions(options);
     }
 
     if (this.isSelectField) {
@@ -248,7 +247,7 @@ export class FormFieldPreviewComponent implements OnChanges {
       }
 
       if (this.field.optionSource?.type !== 'api') {
-        return normalizeStaticSelectFieldOptions(options);
+        return normalizeStaticChoiceOptions(options);
       }
     }
 

@@ -129,7 +129,7 @@
   </option>
   <option
     *ngFor="let opt of displayOptions; trackBy: trackByOptionValue"
-    [ngValue]="opt.value"
+    [ngValue]="opt.id ?? opt.value"
     disabled
   >
     {{ opt.label }}
@@ -145,8 +145,8 @@
     <input
       type="radio"
       [name]="field.id"
-      [value]="opt.value"
-      [checked]="previewValue === opt.value"
+      [value]="opt.id ?? opt.value"
+      [checked]="previewValue === (opt.id ?? opt.value)"
       disabled
       tabindex="-1"
       aria-disabled="true"
@@ -163,7 +163,7 @@
   >
     <input
       type="checkbox"
-      [checked]="isCheckboxChecked(opt.value)"
+      [checked]="isCheckboxChecked(opt.id ?? opt.value)"
       disabled
       tabindex="-1"
       aria-disabled="true"

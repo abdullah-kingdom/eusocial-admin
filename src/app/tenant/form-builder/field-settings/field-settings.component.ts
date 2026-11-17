@@ -62,7 +62,14 @@ import {
 } from '../../../shared/conditional-logic';
 import { FormField, FieldOption, OptionSource, RangeFieldType, RangeTimeFormat } from '../models/form-field.model';
 import { ImageFile } from '../models/image-file.model';
-import { normalizeFieldOption, normalizeStaticSelectFieldOptions } from '../utils/field-options.utils';
+import {
+  createOptionId,
+  getStaticChoiceOptionId,
+  getStaticChoiceOptionLabel,
+  normalizeFieldOption,
+  normalizeStaticChoiceOptions,
+  normalizeStaticSelectFieldOptions,
+} from '../utils/field-options.utils';
 import {
   CURRENT_USER_DEFAULT_TOKEN,
   supportsCurrentUserDefault,
@@ -974,6 +981,18 @@ export class FieldSettingsComponent implements OnDestroy {
   }
 
   get staticValueOptions(): Array<{ label: string; value: string | number }> {
+    const isStaticChoice =
+      this.isCheckboxField ||
+      this.isRadioField ||
+      (this.isSelectField && this.optionsMode === 'static');
+
+    if (isStaticChoice) {
+      return normalizeStaticChoiceOptions(this._field?.options).map((option) => ({
+        label: option.label,
+        value: String(option.id ?? option.value),
+      }));
+    }
+
     return (this._field?.options || [])
       .map((option, index) => {
         if (typeof option === 'string' || typeof option === 'number') {
@@ -2074,10 +2093,18 @@ export class FieldSettingsComponent implements OnDestroy {
       return [];
     }
 
-    // Static select options persist/compare by display label. Always use the
-    // label as the predicate value so CL matches runtime FormControl values.
-    const useStaticLabelValue =
-      source.type === 'select' && source.optionSource?.type !== 'dynamic';
+    // Static select / radio / checkbox: predicate.value = stable option id.
+    const useStaticChoiceIds =
+      source.type === 'checkbox' ||
+      source.type === 'radio' ||
+      (source.type === 'select' && source.optionSource?.type !== 'dynamic');
+
+    if (useStaticChoiceIds) {
+      return normalizeStaticChoiceOptions(source.options).map((option) => ({
+        label: option.label,
+        value: String(option.id ?? option.value),
+      }));
+    }
 
     return source.options
       .map((option, index) => {
@@ -2092,9 +2119,7 @@ export class FieldSettingsComponent implements OnDestroy {
 
         return {
           label: normalized.label,
-          value: useStaticLabelValue
-            ? normalized.label
-            : (normalized.value ?? index),
+          value: normalized.value ?? index,
         };
       })
       .filter((option): option is { label: string; value: string | number } => !!option);
@@ -3313,20 +3338,17 @@ export class FieldSettingsComponent implements OnDestroy {
     return module ? this.getModuleLabel(module) : moduleSlug;
   }
 
+  /** Stable static options for the editor (select / radio / checkbox). */
+  getStaticChoiceOptions(): Array<{ id: string; label: string }> {
+    return normalizeStaticChoiceOptions(this._field?.options).map((option) => ({
+      id: String(option.id ?? option.value),
+      label: option.label,
+    }));
+  }
+
+  /** @deprecated Prefer getStaticChoiceOptions — label list for legacy callers. */
   getStaticOptionLabels(): string[] {
-    return (this._field?.options || [])
-      .map(option => {
-        if (typeof option === 'string') {
-          return option;
-        }
-
-        if (typeof option === 'number') {
-          return String(option);
-        }
-
-        return normalizeFieldOption(option)?.label ?? '';
-      })
-      .filter(Boolean);
+    return this.getStaticChoiceOptions().map((option) => option.label);
   }
 
   updateStaticOptionLabel(index: number, value: string): void {
@@ -3334,13 +3356,17 @@ export class FieldSettingsComponent implements OnDestroy {
       return;
     }
 
-    const labels = this.getStaticOptionLabels();
-    if (index < 0 || index >= labels.length) {
+    const options = this.getStaticChoiceOptions();
+    if (index < 0 || index >= options.length) {
       return;
     }
 
-    labels[index] = value;
-    this.applyStaticOptionLabels(labels);
+    // Rename preserves the existing option id.
+    options[index] = {
+      ...options[index],
+      label: value,
+    };
+    this.applyStaticChoiceOptions(options);
   }
 
   addStaticOption(): void {
@@ -3348,9 +3374,12 @@ export class FieldSettingsComponent implements OnDestroy {
       return;
     }
 
-    const labels = this.getStaticOptionLabels();
-    labels.push(`Option ${labels.length + 1}`);
-    this.applyStaticOptionLabels(labels);
+    const options = this.getStaticChoiceOptions();
+    options.push({
+      id: createOptionId(),
+      label: `Option ${options.length + 1}`,
+    });
+    this.applyStaticChoiceOptions(options);
   }
 
   /**
@@ -3358,7 +3387,7 @@ export class FieldSettingsComponent implements OnDestroy {
    * Hide delete when only one option remains.
    */
   get canRemoveStaticOption(): boolean {
-    return this.getStaticOptionLabels().length > 1;
+    return this.getStaticChoiceOptions().length > 1;
   }
 
   removeStaticOption(index: number): void {
@@ -3366,28 +3395,31 @@ export class FieldSettingsComponent implements OnDestroy {
       return;
     }
 
-    const labels = this.getStaticOptionLabels();
-    if (index < 0 || index >= labels.length || labels.length <= 1) {
+    const options = this.getStaticChoiceOptions();
+    if (index < 0 || index >= options.length || options.length <= 1) {
       return;
     }
 
-    labels.splice(index, 1);
-    this.applyStaticOptionLabels(labels);
+    // Drop the option entirely — its id must never be reused.
+    options.splice(index, 1);
+    this.applyStaticChoiceOptions(options);
   }
 
-  private applyStaticOptionLabels(labels: string[]): void {
+  private applyStaticChoiceOptions(
+    options: Array<{ id: string; label: string }>,
+  ): void {
     if (!this._field || !this.isFieldEditable) {
       return;
     }
 
-    const normalizedLabels = labels.map(v => v.trim()).filter(v => v);
-
-    if (this.isSelectField && this.optionsMode === 'static') {
-      this._field.options = normalizeStaticSelectFieldOptions(normalizedLabels);
-    } else {
-      this._field.options = normalizedLabels;
-    }
-
+    this._field.options = normalizeStaticChoiceOptions(
+      options
+        .map((option) => ({
+          id: option.id,
+          label: option.label.trim(),
+        }))
+        .filter((option) => option.label.length > 0),
+    );
     this._field.optionSource = undefined;
     this.onChange();
   }
@@ -3907,7 +3939,7 @@ export class FieldSettingsComponent implements OnDestroy {
     this._field.options = next;
   }
 
-  /** Compare select options by value/label only (ignore optional id churn). */
+  /** Compare static choice options by stable id + label without regenerating ids. */
   private selectOptionsSemanticallyEqual(
     left: FormField['options'] | undefined,
     right: FormField['options'] | undefined,
@@ -3919,21 +3951,15 @@ export class FieldSettingsComponent implements OnDestroy {
     }
 
     for (let index = 0; index < leftList.length; index += 1) {
-      const leftValue = this.readOptionValue(leftList[index]);
-      const rightValue = this.readOptionValue(rightList[index]);
-      if (String(leftValue ?? '') !== String(rightValue ?? '')) {
+      const leftId = getStaticChoiceOptionId(leftList[index], index);
+      const rightId = getStaticChoiceOptionId(rightList[index], index);
+      if (leftId !== rightId) {
         return false;
       }
 
-      const leftLabel =
-        typeof leftList[index] === 'string' || typeof leftList[index] === 'number'
-          ? String(leftList[index])
-          : normalizeFieldOption(leftList[index])?.label ?? '';
-      const rightLabel =
-        typeof rightList[index] === 'string' || typeof rightList[index] === 'number'
-          ? String(rightList[index])
-          : normalizeFieldOption(rightList[index])?.label ?? '';
-      if (String(leftLabel ?? '') !== String(rightLabel ?? '')) {
+      const leftLabel = getStaticChoiceOptionLabel(leftList[index], index);
+      const rightLabel = getStaticChoiceOptionLabel(rightList[index], index);
+      if (leftLabel !== rightLabel) {
         return false;
       }
     }

@@ -34,8 +34,10 @@ export type RangeTimeFormat = '12' | '24';
 export type MeasurementUnitMode = 'fixed' | 'selectable';
 
 export interface FieldOption {
-  id?: number;
+  /** Stable option identity for static choices (string). Dynamic options may use numeric ids. */
+  id?: string | number;
   label: string;
+  /** Runtime/selection value. For static choices this equals `id`. */
   value: string | number;
   isDefault?: boolean;
   sortOrder?: number;

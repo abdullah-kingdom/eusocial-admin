@@ -6,7 +6,10 @@ import {
   SetValueFieldKind,
 } from '../../../shared/conditional-logic';
 import { FormField } from '../../form-builder/models/form-field.model';
-import { normalizeFieldOption } from '../../form-builder/utils/field-options.utils';
+import {
+  normalizeFieldOption,
+  normalizeStaticChoiceOptions,
+} from '../../form-builder/utils/field-options.utils';
 import { normalizeOptionSource } from '../../form-builder/utils/option-source.utils';
 import {
   FormLogicRule,
@@ -357,13 +360,25 @@ export function resolveLogicFieldKind(
 
 /**
  * Normalize static/dynamic field options for Specific Value compares.
- * Uses option value (not only label) so saved rules restore correctly.
+ * Static select/radio/checkbox use stable option ids as comparison values.
  */
 export function getFixedComparisonOptions(
   field: FormField | null | undefined,
 ): LogicFixedValueOption[] {
   if (!field?.options?.length) {
     return [];
+  }
+
+  const useStableIds =
+    field.type === 'checkbox' ||
+    field.type === 'radio' ||
+    (field.type === 'select' && field.optionSource?.type !== 'dynamic');
+
+  if (useStableIds) {
+    return normalizeStaticChoiceOptions(field.options).map((option) => ({
+      label: option.label,
+      value: String(option.id ?? option.value),
+    }));
   }
 
   return field.options

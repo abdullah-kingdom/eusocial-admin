@@ -98,14 +98,16 @@ export function getSelectOptionLabel(option: FormSelectOption): string {
   if (typeof option === 'string' || typeof option === 'number') {
     return String(option);
   }
-  return String(option.label ?? option.value ?? '');
+  const record = option as { label?: unknown; value?: unknown };
+  return String(record.label ?? record.value ?? '');
 }
 
 export function getSelectOptionValue(option: FormSelectOption): string {
   if (typeof option === 'string' || typeof option === 'number') {
     return String(option);
   }
-  return String(option.value ?? option.label ?? '');
+  const record = option as { id?: unknown; value?: unknown; label?: unknown };
+  return String(record.id ?? record.value ?? record.label ?? '');
 }
 
 /** Map location API/cache records to id-based select options (matches app-dynamic-form). */

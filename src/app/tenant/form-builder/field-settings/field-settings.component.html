@@ -2721,18 +2721,18 @@
     </div>
 
     <div class="static-options-repeater__list">
-      @if (!getStaticOptionLabels().length) {
+      @if (!getStaticChoiceOptions().length) {
         <p class="static-options-repeater__empty text-xs text-slate-500">
           No options yet. Add one below.
         </p>
       }
 
-      @for (label of getStaticOptionLabels(); track $index; let i = $index) {
+      @for (option of getStaticChoiceOptions(); track option.id; let i = $index) {
         <div class="static-options-repeater__row">
           <span class="static-options-repeater__index">{{ i + 1 }}</span>
           <input
             type="text"
-            [value]="label"
+            [value]="option.label"
             (input)="updateStaticOptionLabel(i, $any($event.target).value)"
             [disabled]="!isFieldEditable"
             [placeholder]="'Option ' + (i + 1)"

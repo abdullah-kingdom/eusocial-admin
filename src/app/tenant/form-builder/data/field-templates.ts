@@ -1,4 +1,12 @@
 import { FormField } from '../models/form-field.model';
+import { createOptionId } from '../utils/field-options.utils';
+
+function defaultChoiceOptions(): FormField['options'] {
+  return [
+    { id: createOptionId(), label: 'Option 1', value: '' },
+    { id: createOptionId(), label: 'Option 2', value: '' },
+  ].map((option) => ({ ...option, value: option.id! }));
+}
 
 /** Form Template Add Field tab groups (display only; does not alter FIELD_TEMPLATES). */
 export interface FormTemplatePaletteGroup {
@@ -106,7 +114,7 @@ export const FIELD_TEMPLATES: Omit<FormField, 'id'>[] = [
     label: 'Select Field',
     placeholder: '',
     required: false,
-    options: ['Option 1', 'Option 2']
+    options: defaultChoiceOptions(),
   },
 
   {
@@ -114,7 +122,7 @@ export const FIELD_TEMPLATES: Omit<FormField, 'id'>[] = [
     label: 'Radio Field',
     placeholder: '',
     required: false,
-    options: ['Option 1', 'Option 2']
+    options: defaultChoiceOptions(),
   },
 
   {
@@ -122,7 +130,7 @@ export const FIELD_TEMPLATES: Omit<FormField, 'id'>[] = [
     label: 'Checkbox Field',
     placeholder: '',
     required: false,
-    options: ['Option 1', 'Option 2']
+    options: defaultChoiceOptions(),
   },
 
   {

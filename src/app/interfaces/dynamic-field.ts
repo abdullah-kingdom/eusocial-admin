@@ -29,7 +29,10 @@ export type DynamicFieldType =
   | 'qr-code';
 
 export interface DynamicFieldOption {
+  /** Stable option identity when present (static select/radio/checkbox). */
+  id?: string | number;
   label: string;
+  /** Selection value. For static choices this equals `id`. */
   value: string | number;
 }
 
