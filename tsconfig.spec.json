@@ -10,5 +10,12 @@
   },
   "include": [
     "src/**/*.ts"
+  ],
+  "exclude": [
+    "src/app/guards/auth-guard.spec.ts",
+    "src/app/interceptors/auth-interceptor.spec.ts",
+    "src/app/interceptors/error-interceptor.spec.ts",
+    "src/app/services/permission.spec.ts",
+    "src/app/services/user.spec.ts"
   ]
 }

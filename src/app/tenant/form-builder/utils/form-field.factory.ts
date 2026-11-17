@@ -21,10 +21,7 @@ import {
   normalizeMeasurementUnitCode,
   normalizeMeasurementUnitMode,
 } from '../../../shared/dynamic-form/measurement-units';
-import {
-  normalizeCheckboxFieldOptions,
-  normalizeStaticSelectFieldOptions,
-} from './field-options.utils';
+import { normalizeStaticChoiceOptions } from './field-options.utils';
 import { normalizeFieldTypeName } from './field-type.utils';
 import { readOptionSourceFromField } from './option-source.utils';
 import { resolveBuilderLocationKind } from './location-field-dependencies.utils';
@@ -161,12 +158,8 @@ function resolveFieldOptions(
   optionSource: OptionSource | undefined,
   options: FormField['options'] | undefined
 ): FormField['options'] {
-  if (type === 'checkbox') {
-    return normalizeCheckboxFieldOptions(options);
-  }
-
-  if (isStaticSelectField(type, optionSource)) {
-    return normalizeStaticSelectFieldOptions(options);
+  if (type === 'checkbox' || type === 'radio' || isStaticSelectField(type, optionSource)) {
+    return normalizeStaticChoiceOptions(options);
   }
 
   return cloneOptions(options);

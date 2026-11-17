@@ -3,6 +3,7 @@ import {
   OptionSource,
   SelectSelectionType,
 } from '../../../../form-builder/models/form-field.model';
+import { createOptionId } from '../../../../form-builder/utils/field-options.utils';
 import { FormLogicRule } from '../../../../forms/logic-rules/logic-rule.models';
 import { normalizeLogicRules } from '../../../../forms/logic-rules/logic-rule.utils';
 
@@ -30,13 +31,22 @@ export type FieldType =
   | 'barcode'
   | 'qr-code';
 
-/** Select option — label, record value/id, or label+value for location dependencies. */
+/**
+ * Static choice option for select / radio / checkbox.
+ * Runtime FormControl values use `id`; `label` is display-only.
+ * Legacy string/number and `{label,value}` shapes remain for dynamic/location options.
+ */
 export type FormSelectOption =
   | string
   | number
   | {
+      id: string;
+      label: string;
+    }
+  | {
       label: string;
       value: string | number;
+      id?: string | number;
     };
 
 export interface FormFieldConfig {
@@ -740,10 +750,14 @@ export function formatFrequencySummary(
 }
 
 export interface FormMetaConfig {
+  /** Selected job-position option IDs (not display names). */
   assignJobPosition: string[];
+  /** Selected user option IDs (not display names). */
   assignUsers: string[];
   assignMode: AssignReportMode;
+  /** Selected job-position option IDs (not display names). */
   reportJobPosition: string[];
+  /** Selected user option IDs (not display names). */
   reportUsers: string[];
   reportMode: AssignReportMode;
   frequencyJobPosition: string[];
@@ -887,18 +901,40 @@ export function stripFieldId(field: FormFieldConfig): Omit<FormFieldConfig, 'id'
     ...rest
   } = field;
 
-  const normalizedOptions =
+  const normalizedOptions: FormSelectOption[] | undefined =
     optionSource?.type === 'dynamic'
       ? options?.length
-        ? options.map((opt) =>
-            typeof opt === 'string' || typeof opt === 'number' ? opt : opt.value,
-          )
+        ? (options.map((opt) =>
+            typeof opt === 'string' || typeof opt === 'number'
+              ? opt
+              : ((opt as { value?: unknown }).value ??
+                  (opt as { id?: unknown }).id) as string | number,
+          ) as FormSelectOption[])
         : undefined
-      : options?.map((opt) =>
-          typeof opt === 'string' || typeof opt === 'number'
-            ? opt
-            : String(opt.label ?? opt.value),
-        );
+      : options
+          ?.map((opt) => {
+            if (typeof opt === 'string' || typeof opt === 'number') {
+              // Legacy string options — promote to stable objects on save.
+              const label = String(opt).trim();
+              if (!label) {
+                return null;
+              }
+              return { id: createOptionId(), label };
+            }
+            const optionId = String(
+              (opt as { id?: unknown }).id ??
+                (opt as { value?: unknown }).value ??
+                '',
+            ).trim();
+            const label = String(
+              (opt as { label?: unknown }).label ?? optionId,
+            ).trim();
+            if (!optionId || !label) {
+              return null;
+            }
+            return { id: optionId, label };
+          })
+          .filter((opt): opt is { id: string; label: string } => !!opt);
 
   const hasDefaultValue =
     defaultValue !== undefined &&
@@ -927,22 +963,28 @@ export interface AssignReportOptions {
   jobPositions?: AssignReportOption[];
 }
 
-function resolveSelectedIds(
-  names: string[],
+/**
+ * Map selected option IDs → numeric payload IDs.
+ * Identity is always `option.id` (never display name), so duplicate names
+ * do not inflate the payload.
+ */
+export function resolveSelectedIds(
+  selectedIds: string[],
   options: AssignReportOption[] = [],
 ): number[] {
   const ids = new Set<number>();
+  const knownIds = new Set(options.map((option) => String(option.id)));
 
-  for (const name of names) {
-    if (!name) continue;
-
-    for (const option of options) {
-      if (option.name === name) {
-        const id = Number(option.id);
-        if (Number.isFinite(id)) {
-          ids.add(id);
-        }
-      }
+  for (const raw of selectedIds) {
+    if (!raw) continue;
+    const key = String(raw);
+    // Prefer known options; still accept numeric IDs when options have not loaded yet.
+    if (knownIds.size > 0 && !knownIds.has(key)) {
+      continue;
+    }
+    const id = Number(key);
+    if (Number.isFinite(id)) {
+      ids.add(id);
     }
   }
 

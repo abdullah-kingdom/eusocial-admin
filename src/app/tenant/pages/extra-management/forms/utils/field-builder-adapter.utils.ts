@@ -27,7 +27,11 @@ import {
   isMultiSelectionTypeHiddenForModule,
   resolveBuilderLocationKind,
 } from '../../../../form-builder/utils/location-field-dependencies.utils';
-import { FieldType, FormFieldConfig, createId } from '../models/dynamic-form.models';
+import {
+  normalizeStaticChoiceOptions,
+  toStaticChoiceOptions,
+} from '../../../../form-builder/utils/field-options.utils';
+import { FieldType, FormFieldConfig, FormSelectOption, createId } from '../models/dynamic-form.models';
 
 /** Builder type picker options (maps to FormField + FormFieldConfig). */
 const BUILDER_TYPES: Array<{ label: string; value: FormField['type'] | FieldType }> = [
@@ -183,13 +187,7 @@ export function mapBuilderFieldToConfig(
   const isDynamic = field.optionSource?.type === 'dynamic';
   const mappedOptions = isDynamic
     ? mapDynamicOptionsForTemplateDisplay(field.options)
-    : (field.options ?? [])
-        .map((opt) =>
-          typeof opt === 'string' || typeof opt === 'number'
-            ? String(opt)
-            : String(opt.label ?? opt.value),
-        )
-        .filter((opt) => opt.trim().length > 0);
+    : mapStaticOptionsForTemplatePersist(field.options);
 
   return {
     id: options.preserveId !== false && field.id ? field.id : createId('field'),
@@ -275,15 +273,25 @@ function mapConfigOptionsToBuilder(
       if (typeof opt === 'string' || typeof opt === 'number') {
         return opt;
       }
-      return { label: String(opt.label), value: opt.value };
+      const value =
+        (opt as { value?: string | number }).value ??
+        (opt as { id?: string | number }).id;
+      return {
+        label: String((opt as { label?: string }).label ?? value ?? ''),
+        value: value as string | number,
+        id: (opt as { id?: string | number }).id,
+      };
     });
   }
 
-  return rawOptions.map((opt) =>
-    typeof opt === 'string' || typeof opt === 'number'
-      ? opt
-      : { label: String(opt.label), value: opt.value },
-  );
+  // Static select / radio / checkbox — preserve stable ids; value === id.
+  return normalizeStaticChoiceOptions(rawOptions);
+}
+
+function mapStaticOptionsForTemplatePersist(
+  options: FormField['options'] | undefined,
+): FormSelectOption[] {
+  return toStaticChoiceOptions(options);
 }
 
 /**

@@ -95,11 +95,16 @@ export function remapDynamicFormValuesByFieldId(
 }
 
 export function getOptionValue(
-  option: string | number | DynamicFieldOption,
+  option: string | number | DynamicFieldOption & { id?: string | number },
   index = 0,
 ): string | number {
   if (typeof option === 'string' || typeof option === 'number') {
     return option;
+  }
+
+  // Prefer stable option id when present (static select/radio/checkbox).
+  if (option.id != null && String(option.id).trim() !== '') {
+    return option.id;
   }
 
   return option.value ?? index;

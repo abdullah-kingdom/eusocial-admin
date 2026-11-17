@@ -104,7 +104,17 @@ function applyAnswer(
         .trim()
         .toLowerCase() === 'multiple');
 
-  if (isMultiSelect) {
+  // Multi-select and option-based checkbox store arrays of option ids.
+  if (isMultiSelect || field.type === 'checkbox') {
+    if (typeof answer === 'boolean') {
+      // Standalone boolean checkbox (≤1 option) — keep runtime boolean via defaultValue.
+      return {
+        ...field,
+        value: answer ? 'true' : 'false',
+        defaultValue: answer,
+      };
+    }
+
     const values = Array.isArray(answer)
       ? answer.map(String)
       : answer == null || answer === ''
@@ -115,6 +125,15 @@ function applyAnswer(
       ...field,
       value: values,
       defaultValue: values,
+    };
+  }
+
+  // Radio / single select: FormControl value is the option id (string).
+  if (field.type === 'radio' || field.type === 'select') {
+    return {
+      ...field,
+      value: answer == null ? '' : String(answer),
+      defaultValue: answer == null ? '' : String(answer),
     };
   }
 

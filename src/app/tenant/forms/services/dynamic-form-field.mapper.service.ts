@@ -20,7 +20,7 @@ import {
 import { DynamicField, DynamicFieldType } from '../../../interfaces/dynamic-field';
 import { FieldOption, FieldType, FormField } from '../../form-builder/models/form-field.model';
 import { FieldOptionsService } from '../../form-builder/services/field-options.service';
-import { normalizeCheckboxFieldOptions, normalizeStaticSelectFieldOptions } from '../../form-builder/utils/field-options.utils';
+import { normalizeStaticChoiceOptions } from '../../form-builder/utils/field-options.utils';
 import { resolveConfiguredDefaultValue } from '../../form-builder/utils/field-default-value.utils';
 import { toFieldName } from '../../form-builder/utils/form-field.factory';
 import { normalizeFieldTypeName } from '../../form-builder/utils/field-type.utils';
@@ -210,8 +210,8 @@ export class DynamicFormFieldMapperService {
     field: FormField,
     options: Array<string | number | FieldOption>
   ): FieldOption[] {
-    if (field.type === 'checkbox') {
-      return normalizeCheckboxFieldOptions(options);
+    if (field.type === 'checkbox' || field.type === 'radio') {
+      return normalizeStaticChoiceOptions(options);
     }
 
     if (field.type === 'select') {
@@ -220,7 +220,7 @@ export class DynamicFormFieldMapperService {
       }
 
       if (field.optionSource?.type !== 'api') {
-        return normalizeStaticSelectFieldOptions(options);
+        return normalizeStaticChoiceOptions(options);
       }
     }
 

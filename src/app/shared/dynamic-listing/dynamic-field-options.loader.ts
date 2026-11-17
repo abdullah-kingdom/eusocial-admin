@@ -50,25 +50,37 @@ export function shouldFetchSelectOptionsFromApi(field: DynamicField): boolean {
 
 export function normalizeStaticSelectOptions(fields: DynamicField[]): void {
   for (const field of fields) {
-    if (field.type === 'select' && !field.optionSource && Array.isArray(field.options)) {
-      field.options = field.options.map((option) => {
-        if (typeof option === 'string' || typeof option === 'number') {
-          return {
-            name: String(option),
-            label: String(option),
-            value: option,
-            id: option,
-          };
-        }
+    const isStaticChoice =
+      (field.type === 'select' && !field.optionSource) ||
+      field.type === 'radio' ||
+      field.type === 'checkbox';
 
-        return {
-          name: option.label,
-          label: option.label,
-          value: option.value,
-          id: option.value,
-        };
-      });
+    if (!isStaticChoice || !Array.isArray(field.options)) {
+      continue;
     }
+
+    field.options = field.options.map((option, index) => {
+      if (typeof option === 'string' || typeof option === 'number') {
+        return {
+          name: String(option),
+          label: String(option),
+          value: option,
+          id: option,
+        };
+      }
+
+      const id =
+        option.id != null && String(option.id).trim() !== ''
+          ? option.id
+          : option.value ?? index;
+
+      return {
+        name: option.label,
+        label: option.label,
+        value: id,
+        id,
+      };
+    });
   }
 }
 
