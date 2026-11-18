@@ -620,29 +620,138 @@ export function cloneDefaultValueSource(
     : null;
 }
 
+function isTechnicalFieldId(raw: string): boolean {
+  return /^fld_/i.test(String(raw ?? '').trim());
+}
+
+/**
+ * Resolve a display label for a form field id. Never returns a raw `fld_…` id.
+ */
+export function resolveDefaultValueFieldDisplayLabel(
+  fieldId: string | null | undefined,
+  fieldLabelById: (fieldId: string) => string,
+): string {
+  const id = String(fieldId ?? '').trim();
+  if (!id) {
+    return 'Unknown field';
+  }
+  const label = String(fieldLabelById(id) ?? '').trim();
+  if (label && !isTechnicalFieldId(label)) {
+    return label;
+  }
+  if (isTechnicalFieldId(id)) {
+    return 'Unknown field';
+  }
+  return resolveRelatedPropertyDisplayLabel(id);
+}
+
+/**
+ * Resolve a Related Data property key to a human-readable label (display only).
+ */
+export function resolveDefaultValuePropertyDisplayLabel(
+  propertyKey: string | null | undefined,
+  propertyLabelByKey?: (propertyKey: string, sourceFieldId?: string) => string,
+  sourceFieldId?: string,
+): string {
+  const key = String(propertyKey ?? '').trim();
+  if (!key) {
+    return 'Unknown property';
+  }
+  const mapped = String(propertyLabelByKey?.(key, sourceFieldId) ?? '').trim();
+  if (mapped && !isTechnicalFieldId(mapped)) {
+    return mapped;
+  }
+  return resolveRelatedPropertyDisplayLabel(key, { mappedLabel: mapped || null });
+}
+
+function describeOperandForSummary(
+  source: ValueSource,
+  fieldLabelById: (fieldId: string) => string,
+  propertyLabelByKey?: (propertyKey: string, sourceFieldId?: string) => string,
+): string {
+  switch (source.kind) {
+    case 'fixed':
+      return source.value == null || source.value === ''
+        ? 'value'
+        : String(source.value);
+    case 'field':
+      return resolveDefaultValueFieldDisplayLabel(source.fieldId, fieldLabelById);
+    case 'relatedData': {
+      const sourceLabel = resolveDefaultValueFieldDisplayLabel(
+        source.sourceFieldId,
+        fieldLabelById,
+      );
+      const propertyLabel = resolveDefaultValuePropertyDisplayLabel(
+        source.property,
+        propertyLabelByKey,
+        source.sourceFieldId,
+      );
+      return `${sourceLabel} → ${propertyLabel}`;
+    }
+    default:
+      return 'value';
+  }
+}
+
+/**
+ * Human-readable Dynamic Default Value summary for Field Settings / canvas.
+ * Display only — does not change persisted ids/keys.
+ */
 export function describeDefaultValueSource(
   source: ValueSource | null | undefined,
   fieldLabelById: (fieldId: string) => string,
+  options?: {
+    propertyLabelByKey?: (propertyKey: string, sourceFieldId?: string) => string;
+  },
 ): string {
   const normalized = normalizeDefaultValueSource(source);
   if (!normalized) {
     return '';
   }
 
+  const propertyLabelByKey = options?.propertyLabelByKey;
+
   switch (normalized.kind) {
     case 'field':
       return normalized.fieldId
-        ? `From field: ${fieldLabelById(normalized.fieldId) || normalized.fieldId}`
+        ? `From field: ${resolveDefaultValueFieldDisplayLabel(
+            normalized.fieldId,
+            fieldLabelById,
+          )}`
         : 'From field (not configured)';
     case 'relatedData': {
-      const sourceLabel = normalized.sourceFieldId
-        ? fieldLabelById(normalized.sourceFieldId) || normalized.sourceFieldId
-        : 'source';
-      const property = normalized.property || 'property';
-      return `From related data: ${sourceLabel} → ${property}`;
+      const sourceLabel = resolveDefaultValueFieldDisplayLabel(
+        normalized.sourceFieldId,
+        fieldLabelById,
+      );
+      const propertyLabel = resolveDefaultValuePropertyDisplayLabel(
+        normalized.property,
+        propertyLabelByKey,
+        normalized.sourceFieldId,
+      );
+      return `From related data: ${sourceLabel} → ${propertyLabel}`;
     }
-    case 'expression':
-      return `Calculation (${normalized.op})`;
+    case 'expression': {
+      const opLabel =
+        normalized.op === 'add'
+          ? '+'
+          : normalized.op === 'subtract'
+            ? '−'
+            : normalized.op === 'divide'
+              ? '÷'
+              : '×';
+      const left = describeOperandForSummary(
+        normalizeValueSource(normalized.left),
+        fieldLabelById,
+        propertyLabelByKey,
+      );
+      const right = describeOperandForSummary(
+        normalizeValueSource(normalized.right),
+        fieldLabelById,
+        propertyLabelByKey,
+      );
+      return `Calculation: ${left} ${opLabel} ${right}`;
+    }
     default:
       return 'Dynamic default';
   }

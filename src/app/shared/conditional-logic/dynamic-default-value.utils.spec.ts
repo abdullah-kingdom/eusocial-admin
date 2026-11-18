@@ -425,6 +425,50 @@ describe('dynamic default value utils', () => {
         ),
       ).toContain('Email');
     });
+
+    it('describes Related Data with human-readable property labels', () => {
+      const summary = describeDefaultValueSource(
+        {
+          kind: 'relatedData',
+          sourceFieldId: 'select_user',
+          property: 'fld_1788885525561_nzxdgvw',
+        },
+        (id) => (id === 'select_user' ? 'Select User' : ''),
+        {
+          propertyLabelByKey: (property) =>
+            property === 'fld_1788885525561_nzxdgvw' ? 'Email' : '',
+        },
+      );
+      expect(summary).toBe('From related data: Select User → Email');
+      expect(summary).not.toContain('fld_');
+    });
+
+    it('never falls back to raw fld_ ids in summaries', () => {
+      const summary = describeDefaultValueSource(
+        {
+          kind: 'relatedData',
+          sourceFieldId: 'fld_missing_source',
+          property: 'fld_missing_property',
+        },
+        () => '',
+      );
+      expect(summary).toContain('Unknown field');
+      expect(summary).toContain('Unnamed property');
+      expect(summary).not.toMatch(/fld_/i);
+    });
+
+    it('describes Calculation operands with field labels', () => {
+      const summary = describeDefaultValueSource(
+        {
+          kind: 'expression',
+          op: 'multiply',
+          left: { kind: 'field', fieldId: 'qty' },
+          right: { kind: 'field', fieldId: 'price' },
+        },
+        (id) => (id === 'qty' ? 'Quantity' : id === 'price' ? 'Price' : ''),
+      );
+      expect(summary).toBe('Calculation: Quantity × Price');
+    });
   });
 
   describe('resolveValueSource reuse', () => {

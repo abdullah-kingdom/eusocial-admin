@@ -434,9 +434,10 @@ function resolveConfigPreviewValue(field: FormField): string | string[] | undefi
 
   if (field.defaultValueSource) {
     // Builder canvas cannot always resolve dynamic sources — show a summary.
+    // Never echo raw fld_… ids; describeDefaultValueSource falls back safely.
     return describeDefaultValueSource(
       field.defaultValueSource,
-      (fieldId) => fieldId,
+      (fieldId) => '',
     );
   }
 

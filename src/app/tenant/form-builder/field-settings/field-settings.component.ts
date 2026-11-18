@@ -67,6 +67,7 @@ import {
   isCompatibleDynamicDefaultSourceField,
   isDynamicDefaultValueSource,
   normalizeDefaultValueSource,
+  resolveRelatedPropertyDisplayLabel,
 } from '../../../shared/conditional-logic';
 import { FormField, FieldOption, OptionSource, RangeFieldType, RangeTimeFormat } from '../models/form-field.model';
 import { ImageFile } from '../models/image-file.model';
@@ -165,6 +166,8 @@ export class FieldSettingsComponent implements OnDestroy {
   private readonly viewContainerRef = inject(ViewContainerRef);
   private readonly schemaSignal = signal<FormField[]>([]);
   private readonly selectedFieldIdSignal = signal<string | null>(null);
+  /** Bumps when Related Data column labels load so Dynamic Default summaries refresh. */
+  private readonly relatedPropertyLabelsVersion = signal(0);
   readonly dynamicOptionsDropdownGroup = 'form-builder-dynamic-options';
 
   @ViewChild('dynamicOptionsExpandTpl')
@@ -994,11 +997,41 @@ export class FieldSettingsComponent implements OnDestroy {
   }
 
   get dynamicDefaultSourceSummary(): string {
+    // Touch the version signal so summaries refresh after async column loads.
+    this.relatedPropertyLabelsVersion();
     return describeDefaultValueSource(
       this._field?.defaultValueSource,
-      (fieldId) =>
-        this.schemaSignal().find((field) => field.id === fieldId)?.label || fieldId,
+      (fieldId) => this.selectFieldLabel(this.schemaSignal(), fieldId),
+      {
+        propertyLabelByKey: (propertyKey, sourceFieldId) =>
+          this.resolveDefaultValueRelatedPropertyLabel(propertyKey, sourceFieldId),
+      },
     );
+  }
+
+  /**
+   * Display-only Related Data property label for Dynamic Default summaries.
+   * Uses cached module column labels when available.
+   */
+  private resolveDefaultValueRelatedPropertyLabel(
+    propertyKey: string,
+    sourceFieldId?: string,
+  ): string {
+    const key = String(propertyKey ?? '').trim();
+    if (!key) {
+      return '';
+    }
+    const sourceId = String(sourceFieldId ?? '').trim();
+    const columns = sourceId
+      ? this.relatedPropertyCache.get(sourceId) ?? []
+      : [];
+    const fromCache = this.selectColumnLabel(columns, key);
+    if (fromCache && !/^fld_/i.test(fromCache)) {
+      return fromCache;
+    }
+    return resolveRelatedPropertyDisplayLabel(key, {
+      mappedLabel: fromCache || null,
+    });
   }
 
   get dynamicDefaultValueSourceKinds(): Array<{ value: ValueSourceKind; label: string }> {
@@ -3206,11 +3239,13 @@ export class FieldSettingsComponent implements OnDestroy {
         this.relatedPropertyLoading.delete(sourceFieldId);
         this.relatedPropertyCache.set(sourceFieldId, data.columns || []);
         this.relatedRecordsCache.set(sourceFieldId, data.records || []);
+        this.relatedPropertyLabelsVersion.update((version) => version + 1);
       },
       error: () => {
         this.relatedPropertyLoading.delete(sourceFieldId);
         this.relatedPropertyCache.set(sourceFieldId, []);
         this.relatedRecordsCache.set(sourceFieldId, []);
+        this.relatedPropertyLabelsVersion.update((version) => version + 1);
       },
     });
   }
@@ -4061,6 +4096,12 @@ export class FieldSettingsComponent implements OnDestroy {
     this.ensureConditionSourceIsValid(false);
     if (hasSetValueAction(this.conditionEditor)) {
       this.prefetchSetValueRelatedProperties();
+    }
+    // Prefetch Related Data column labels so the Dynamic Default summary can
+    // show human-readable property names instead of raw fld_… keys.
+    const defaultSource = normalizeDefaultValueSource(this._field.defaultValueSource);
+    if (defaultSource) {
+      this.prefetchDefaultValueRelatedProperties(defaultSource);
     }
   }
 
