@@ -40,6 +40,7 @@ import {
   RelatedRecordLookup,
   resolveAllConditionalEffects,
   collectDynamicDefaultSkipFieldIds,
+  DynamicDefaultPropertyColumn,
   resolveDynamicDefaultValues,
   resolveSetValueFromAction,
   setValuesEqual,
@@ -292,6 +293,11 @@ export class DynamicFormComponent implements OnDestroy {
   private readonly userEditedFieldIds = new Set<string>();
   private readonly relatedRecordsByEndpoint = new Map<string, Record<string, unknown>[]>();
   private readonly relatedRecordsLoading = new Set<string>();
+  /**
+   * Related Data property metadata for Dynamic Default relationship resolution.
+   * Keys: `${sourceFieldId}::${property}` and bare `property`.
+   */
+  private readonly relatedPropertyColumns = new Map<string, DynamicDefaultPropertyColumn>();
 
   /** Resolved Country/State/City fields for the current schema. */
   private locationFields: Partial<Record<LocationKind, DynamicField>> = {};
@@ -1834,6 +1840,7 @@ export class DynamicFormComponent implements OnDestroy {
         valuesByFieldId,
         fieldsById,
         lookup,
+        relatedPropertyColumns: this.relatedPropertyColumns,
         applyValue: (field, value) => {
           if (skip.has(field.id) || this.userEditedFieldIds.has(field.id)) {
             return false;
@@ -2145,6 +2152,8 @@ export class DynamicFormComponent implements OnDestroy {
 
   private prefetchRelatedRecordsForSetValue(fields: DynamicField[]): void {
     const endpoints = new Set<string>();
+    const relatedDataPairs: Array<{ sourceFieldId: string; property: string; endpoint: string }> =
+      [];
 
     const collectEndpointsFromSource = (
       source: ReturnType<typeof normalizeValueSource> | null | undefined,
@@ -2167,6 +2176,14 @@ export class DynamicFormComponent implements OnDestroy {
           const endpoint = String(sourceField?.optionSource?.endpoint ?? '').trim();
           if (endpoint) {
             endpoints.add(endpoint);
+            const property = String(value.property ?? '').trim();
+            if (property) {
+              relatedDataPairs.push({
+                sourceFieldId: value.sourceFieldId,
+                property,
+                endpoint,
+              });
+            }
           }
         }
         if (value.kind === 'expression') {
@@ -2190,6 +2207,63 @@ export class DynamicFormComponent implements OnDestroy {
     }
 
     this.loadRelatedRecordsForEndpoints(endpoints);
+    this.prefetchRelatedPropertyMetadata(relatedDataPairs);
+  }
+
+  /**
+   * Load module column metadata so relationship FKs (Role, Job Position, …)
+   * can resolve to display labels, and prefetch nested related modules.
+   */
+  private prefetchRelatedPropertyMetadata(
+    pairs: Array<{ sourceFieldId: string; property: string; endpoint: string }>,
+  ): void {
+    const uniqueEndpoints = new Set(
+      pairs.map((pair) => pair.endpoint).filter(Boolean),
+    );
+
+    for (const endpoint of uniqueEndpoints) {
+      this.dynamicModuleOptions.getModuleData(endpoint).subscribe({
+        next: (data) => {
+          if (data.records?.length) {
+            this.storeRelatedRecords(endpoint, data.records);
+          }
+
+          const nestedEndpoints = new Set<string>();
+          for (const pair of pairs.filter((item) => item.endpoint === endpoint)) {
+            const column = (data.columns || []).find(
+              (item) => String(item.id) === pair.property,
+            );
+            if (!column) {
+              continue;
+            }
+            const meta: DynamicDefaultPropertyColumn = {
+              id: column.id,
+              label: column.label,
+              type: column.type,
+              relatedEndpoint: column.relatedEndpoint,
+              relatedDisplayKey: column.relatedDisplayKey,
+            };
+            this.relatedPropertyColumns.set(
+              `${pair.sourceFieldId}::${pair.property}`,
+              meta,
+            );
+            this.relatedPropertyColumns.set(pair.property, meta);
+            if (column.relatedEndpoint) {
+              nestedEndpoints.add(column.relatedEndpoint);
+            }
+          }
+
+          if (nestedEndpoints.size) {
+            this.loadRelatedRecordsForEndpoints(nestedEndpoints);
+          } else {
+            this.refreshSetValueAfterRelatedLoad();
+          }
+        },
+        error: () => {
+          // Column metadata is best-effort; scalar resolution still works.
+        },
+      });
+    }
   }
 
   private loadRelatedRecordsForEndpoints(endpoints: Iterable<string>): void {

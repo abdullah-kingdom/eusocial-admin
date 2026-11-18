@@ -59,7 +59,8 @@ import {
   validateConditionRule,
   validateConditionRules,
   wouldCreateCircularDependency,
-  DYNAMIC_DEFAULT_VALUE_SOURCE_KINDS,
+  getDynamicDefaultValueSourceKindsForTarget,
+  supportsDynamicDefaultCalculation,
   cloneDefaultValueSource,
   describeDefaultValueSource,
   filterRelatedPropertiesForDynamicDefault,
@@ -1001,7 +1002,7 @@ export class FieldSettingsComponent implements OnDestroy {
   }
 
   get dynamicDefaultValueSourceKinds(): Array<{ value: ValueSourceKind; label: string }> {
-    return DYNAMIC_DEFAULT_VALUE_SOURCE_KINDS.map((value) => ({
+    return getDynamicDefaultValueSourceKindsForTarget(this._field).map((value) => ({
       value,
       label: VALUE_SOURCE_KIND_LABELS[value],
     }));
@@ -1075,6 +1076,13 @@ export class FieldSettingsComponent implements OnDestroy {
       this.toastr.warning('Configure a dynamic value source before applying.');
       return;
     }
+    if (
+      source.kind === 'expression' &&
+      !supportsDynamicDefaultCalculation(this._field)
+    ) {
+      this.toastr.warning('Calculation is only available for numeric fields.');
+      return;
+    }
 
     this._field.defaultValueSource = source;
     // Clear static default so the two modes cannot conflict.
@@ -1131,11 +1139,11 @@ export class FieldSettingsComponent implements OnDestroy {
 
   onDefaultValueSourceKindChange(kind: ValueSourceKind): void {
     this.overlayService.close();
-    if (
-      !(DYNAMIC_DEFAULT_VALUE_SOURCE_KINDS as readonly ValueSourceKind[]).includes(
-        kind,
-      )
-    ) {
+    const allowed = getDynamicDefaultValueSourceKindsForTarget(this._field);
+    if (!(allowed as readonly ValueSourceKind[]).includes(kind)) {
+      return;
+    }
+    if (kind === 'expression' && !supportsDynamicDefaultCalculation(this._field)) {
       return;
     }
     this.patchDefaultValueSourceDraft(createDefaultValueSource(kind));

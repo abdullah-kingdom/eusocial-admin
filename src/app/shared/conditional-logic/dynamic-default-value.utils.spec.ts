@@ -2,6 +2,7 @@ import {
   collectDynamicDefaultSkipFieldIds,
   describeDefaultValueSource,
   filterRelatedPropertiesForDynamicDefault,
+  getDynamicDefaultValueSourceKindsForTarget,
   hasPopulatedAnswerValue,
   isCompatibleDynamicDefaultSourceField,
   isDynamicDefaultValueSource,
@@ -9,7 +10,9 @@ import {
   normalizeDefaultValueSource,
   resolveDynamicDefaultValues,
   resolveRelatedPropertyDisplayLabel,
+  resolveRelatedPropertyValueForDynamicDefault,
   shouldApplyDynamicDefaultResolvedValue,
+  supportsDynamicDefaultCalculation,
   topologicalSortFieldIds,
 } from './dynamic-default-value.utils';
 import {
@@ -609,22 +612,50 @@ describe('dynamic default value utils', () => {
     it('preserves date/time filtering', () => {
       const dateColumns = [
         { id: 'id', label: 'ID' },
-        { id: 'created_at', label: 'Created' },
-        { id: 'email', label: 'Email' },
+        { id: 'created_at', label: 'Created Date', type: 'date' },
+        { id: 'updated_at', label: 'Updated Date', type: 'date' },
+        { id: 'email', label: 'Email', type: 'email' },
+        {
+          id: 'role',
+          label: 'Role',
+          type: 'select',
+          relatedEndpoint: 'roles',
+          relatedDisplayKey: 'name',
+        },
+        {
+          id: 'job_position',
+          label: 'Job Position',
+          type: 'select',
+          relatedEndpoint: 'jobpositions',
+          relatedDisplayKey: 'name',
+        },
       ];
       const dateRecords = [
-        { id: '1', created_at: '2024-01-15', email: 'a@b.com' },
+        {
+          id: '1',
+          created_at: '2024-01-15',
+          updated_at: '2024-02-01',
+          email: 'a@b.com',
+          role: 'role_1',
+          job_position: 'pos_1',
+        },
       ];
       const dateFiltered = filterRelatedPropertiesForDynamicDefault(
         dateColumns,
         dateRecords,
         { id: 'due', type: 'date', label: 'Due' },
       );
-      expect(dateFiltered.map((c) => c.id)).toEqual(['created_at']);
+      const dateIds = dateFiltered.map((c) => c.id);
+      expect(dateIds).toContain('created_at');
+      expect(dateIds).toContain('updated_at');
+      expect(dateIds).not.toContain('role');
+      expect(dateIds).not.toContain('job_position');
+      expect(dateIds).not.toContain('email');
+      expect(dateIds).not.toContain('id');
 
       const timeColumns = [
         { id: 'id', label: 'ID' },
-        { id: 'start_time', label: 'Start' },
+        { id: 'start_time', label: 'Start', type: 'time' },
         { id: 'name', label: 'Name' },
       ];
       const timeRecords = [
@@ -636,6 +667,23 @@ describe('dynamic default value utils', () => {
         { id: 'when', type: 'time', label: 'When' },
       );
       expect(timeFiltered.map((c) => c.id)).toEqual(['start_time']);
+    });
+
+    it('allows Job Position relationship for Text targets (display resolved at runtime)', () => {
+      const filtered = filterRelatedPropertiesForDynamicDefault(
+        [
+          {
+            id: 'job_position',
+            label: 'Job Position',
+            type: 'select',
+            relatedEndpoint: 'jobpositions',
+          },
+          { id: 'email', label: 'Email', type: 'email' },
+        ],
+        [{ id: '1', job_position: 'pos_1', email: 'a@b.com' }],
+        textTarget,
+      );
+      expect(filtered.map((c) => c.id)).toContain('job_position');
     });
 
     it('keeps select-compatible properties that coerce to option values', () => {
@@ -719,6 +767,176 @@ describe('dynamic default value utils', () => {
       if (persisted?.kind === 'relatedData') {
         expect(persisted.property).toBe(propertyKey);
       }
+    });
+  });
+
+  describe('relationship display resolution', () => {
+    const textTarget = { id: 'job_name', type: 'text', label: 'Job Position Name' };
+    const jobColumn = {
+      id: 'job_position',
+      label: 'Job Position',
+      type: 'select',
+      relatedEndpoint: 'jobpositions',
+      relatedDisplayKey: 'name',
+    };
+
+    it('resolves User Email scalar unchanged', () => {
+      const lookup = { recordsByEndpoint: new Map() };
+      expect(
+        resolveRelatedPropertyValueForDynamicDefault(
+          'ada@example.com',
+          { id: 'email', label: 'Email', type: 'email' },
+          { id: 'email_field', type: 'email' },
+          lookup,
+        ),
+      ).toBe('ada@example.com');
+    });
+
+    it('resolves Job Position ID to Job Position Name for text targets', () => {
+      const lookup = {
+        recordsByEndpoint: new Map([
+          [
+            'jobpositions',
+            [{ id: 'position_456', name: 'Restaurant Manager' }],
+          ],
+        ]),
+      };
+      expect(
+        resolveRelatedPropertyValueForDynamicDefault(
+          'position_456',
+          jobColumn,
+          textTarget,
+          lookup,
+        ),
+      ).toBe('Restaurant Manager');
+    });
+
+    it('does not populate raw relationship IDs when related records are missing', () => {
+      const lookup = { recordsByEndpoint: new Map() };
+      expect(
+        resolveRelatedPropertyValueForDynamicDefault(
+          'position_456',
+          jobColumn,
+          textTarget,
+          lookup,
+        ),
+      ).toBeNull();
+    });
+
+    it('applies resolved Job Position name through resolveDynamicDefaultValues', () => {
+      const fields = [
+        {
+          id: 'job_name',
+          name: 'job_name',
+          type: 'text',
+          defaultValueSource: {
+            kind: 'relatedData' as const,
+            sourceFieldId: 'user',
+            property: 'job_position',
+          },
+        },
+        {
+          id: 'user',
+          name: 'user',
+          type: 'select',
+          optionSource: {
+            type: 'dynamic',
+            endpoint: 'users',
+            response: { valueKey: 'id', labelKey: 'name', dataPath: 'data' },
+          },
+        },
+      ];
+      const valuesByFieldId: Record<string, unknown> = {
+        user: 'user_123',
+        job_name: '',
+      };
+      const lookup = {
+        recordsByEndpoint: new Map([
+          ['users', [{ id: 'user_123', job_position: 'position_456' }]],
+          [
+            'jobpositions',
+            [{ id: 'position_456', name: 'Restaurant Manager' }],
+          ],
+        ]),
+      };
+      const relatedPropertyColumns = new Map([
+        ['user::job_position', jobColumn],
+        ['job_position', jobColumn],
+      ]);
+
+      resolveDynamicDefaultValues(fields, {
+        valuesByFieldId,
+        fieldsById: new Map(fields.map((field) => [field.id, field])),
+        lookup,
+        relatedPropertyColumns,
+        applyValue: (field, value) => {
+          valuesByFieldId[field.id] = value;
+          return true;
+        },
+      });
+
+      expect(valuesByFieldId['job_name']).toBe('Restaurant Manager');
+    });
+  });
+
+  describe('Calculation eligibility', () => {
+    it('allows Calculation for Number and Measurement targets', () => {
+      expect(supportsDynamicDefaultCalculation({ type: 'number' })).toBeTrue();
+      expect(supportsDynamicDefaultCalculation({ type: 'price' })).toBeTrue();
+      expect(supportsDynamicDefaultCalculation({ type: 'length' })).toBeTrue();
+      expect(
+        getDynamicDefaultValueSourceKindsForTarget({ type: 'number' }),
+      ).toContain('expression');
+    });
+
+    it('hides Calculation for Email, Text, Date, Select, and similar targets', () => {
+      for (const type of [
+        'email',
+        'text',
+        'textarea',
+        'date',
+        'time',
+        'select',
+        'radio',
+        'checkbox',
+        'barcode',
+        'qr-code',
+        'rating',
+        'range',
+      ]) {
+        expect(supportsDynamicDefaultCalculation({ type })).toBeFalse();
+        expect(
+          getDynamicDefaultValueSourceKindsForTarget({ type }),
+        ).not.toContain('expression');
+      }
+    });
+
+    it('does not execute saved Calculation configs on unsupported targets', () => {
+      const fields = [
+        {
+          id: 'email',
+          name: 'email',
+          type: 'email',
+          defaultValueSource: {
+            kind: 'expression' as const,
+            op: 'add' as const,
+            left: { kind: 'fixed' as const, value: 1 },
+            right: { kind: 'fixed' as const, value: 2 },
+          },
+        },
+      ];
+      const valuesByFieldId: Record<string, unknown> = { email: '' };
+
+      resolveDynamicDefaultValues(fields, {
+        valuesByFieldId,
+        fieldsById: new Map(fields.map((field) => [field.id, field])),
+        applyValue: () => {
+          fail('calculation must not run for email');
+          return false;
+        },
+      });
+
+      expect(valuesByFieldId['email']).toBe('');
     });
   });
 });

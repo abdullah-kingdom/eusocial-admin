@@ -33,6 +33,13 @@ export interface ModuleColumnOption {
   label: string;
   /** Schema field type when the column maps to a module form field. */
   type?: string;
+  /**
+   * When this column is a dynamic Select/Radio relationship, the related
+   * module endpoint/slug used to resolve display labels from stored IDs.
+   */
+  relatedEndpoint?: string;
+  /** Preferred display key on related module records (`name`, `title`, …). */
+  relatedDisplayKey?: string;
 }
 
 export interface ModuleDataCache {
@@ -430,6 +437,7 @@ export class DynamicModuleOptionsService {
   ): ModuleColumnOption[] {
     const labelByKey = this.buildSchemaColumnLabelMap(fields);
     const typeByKey = this.buildSchemaColumnTypeMap(fields);
+    const relationByKey = this.buildSchemaColumnRelationMap(fields);
     const columnIds = new Set<string>();
 
     for (const field of fields) {
@@ -447,13 +455,94 @@ export class DynamicModuleOptionsService {
       return this.getFallbackColumns();
     }
 
-    const columns: ModuleColumnOption[] = Array.from(columnIds).map((id) => ({
-      id,
-      label: this.resolveColumnDisplayLabel(id, labelByKey.get(id)),
-      type: typeByKey.get(id),
-    }));
+    const columns: ModuleColumnOption[] = Array.from(columnIds).map((id) => {
+      const relation =
+        relationByKey.get(id) ?? this.inferRelationFromPropertyKey(id);
+      return {
+        id,
+        label: this.resolveColumnDisplayLabel(id, labelByKey.get(id)),
+        type: typeByKey.get(id) ?? (relation ? 'select' : undefined),
+        relatedEndpoint: relation?.endpoint,
+        relatedDisplayKey: relation?.displayKey,
+      };
+    });
 
     return this.sortModuleColumns(columns);
+  }
+
+  private buildSchemaColumnRelationMap(
+    fields: FormField[],
+  ): Map<string, { endpoint: string; displayKey?: string }> {
+    const relations = new Map<string, { endpoint: string; displayKey?: string }>();
+
+    for (const field of fields) {
+      if (field.type !== 'select' && field.type !== 'radio') {
+        continue;
+      }
+      const sourceType = String(field.optionSource?.type ?? '')
+        .trim()
+        .toLowerCase();
+      const endpoint = String(field.optionSource?.endpoint ?? '').trim();
+      if ((sourceType !== 'dynamic' && sourceType !== 'api') || !endpoint) {
+        continue;
+      }
+
+      const displayKey =
+        String(field.optionSource?.response?.labelKey ?? '').trim() || 'name';
+      const meta = { endpoint, displayKey };
+
+      const id = String(field.id ?? '').trim();
+      const name = String(field.name ?? '').trim();
+      const fieldKey = String(field.fieldKey ?? '').trim();
+      const systemMappingKey = String(field.systemMappingKey ?? '').trim();
+
+      if (id) {
+        relations.set(id, meta);
+      }
+      if (name) {
+        relations.set(name, meta);
+      }
+      if (fieldKey) {
+        relations.set(fieldKey, meta);
+      }
+      if (systemMappingKey) {
+        relations.set(systemMappingKey, meta);
+      }
+    }
+
+    return relations;
+  }
+
+  /**
+   * Fallback when record keys exist without matching schema optionSource.
+   * Maps semantic property names to module endpoints — not concrete record IDs.
+   */
+  private inferRelationFromPropertyKey(
+    columnId: string,
+  ): { endpoint: string; displayKey?: string } | undefined {
+    const key = String(columnId ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/-/g, '_');
+    if (!key || /^fld_/i.test(key)) {
+      return undefined;
+    }
+
+    const hints: Array<{ match: RegExp; endpoint: string }> = [
+      { match: /(^|_)job_?positions?(_id)?$/, endpoint: 'jobpositions' },
+      { match: /(^|_)roles?(_id)?$/, endpoint: 'roles' },
+      { match: /(^|_)vendors?(_id)?$/, endpoint: 'vendors' },
+      { match: /(^|_)items?(_id)?$/, endpoint: 'items' },
+      { match: /(^|_)users?(_id)?$/, endpoint: 'users' },
+      { match: /(^|_)reporting_?groups?(_id)?$/, endpoint: 'reporting-groups' },
+    ];
+
+    for (const hint of hints) {
+      if (hint.match.test(key)) {
+        return { endpoint: hint.endpoint, displayKey: 'name' };
+      }
+    }
+    return undefined;
   }
 
   private buildSchemaColumnLabelMap(fields: FormField[]): Map<string, string> {
