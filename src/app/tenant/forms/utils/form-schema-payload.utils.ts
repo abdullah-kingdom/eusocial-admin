@@ -89,6 +89,7 @@ export function buildFormSchemaPayload(fields: FormField[]) {
           grid_width_desktop: 6,
         },
         defaultValue: field.defaultValue ?? field.value ?? null,
+        defaultValueSource: field.defaultValueSource ?? null,
         options:
           field.optionSource?.type === 'dynamic'
             ? toDynamicSelectOptionIds(field.options)

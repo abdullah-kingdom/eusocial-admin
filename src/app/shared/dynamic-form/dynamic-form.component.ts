@@ -39,9 +39,16 @@ import {
   normalizeValueSource,
   RelatedRecordLookup,
   resolveAllConditionalEffects,
+  collectDynamicDefaultSkipFieldIds,
+  DynamicDefaultPropertyColumn,
+  resolveDynamicDefaultValues,
   resolveSetValueFromAction,
   setValuesEqual,
+  shouldApplyDynamicDefaultResolvedValue,
   supportsSetValueFieldType,
+  hasPopulatedAnswerValue,
+  isDynamicDefaultValueSource,
+  normalizeDefaultValueSource,
 } from '../conditional-logic';
 import { DynamicModuleOptionsService } from '../../tenant/form-builder/services/dynamic-module-options.service';
 import { FormStorageService } from '../../tenant/forms/services/form-storage.service';
@@ -273,8 +280,24 @@ export class DynamicFormComponent implements OnDestroy {
   readonly conditionalEffects = signal<Record<string, ConditionalFieldEffects>>({});
   private fieldsSchemaKey = '';
   private applyingConditionalState = false;
+  private applyingDynamicDefaults = false;
+  /**
+   * Field ids hydrated from submitted/draft answers — never overwrite with
+   * dynamic defaults on later refreshes.
+   */
+  private readonly answerProtectedFieldIds = new Set<string>();
+  /**
+   * Field ids the user has manually edited. Durable across related-load
+   * refreshes and value-change re-resolves (not solely dirty/touched).
+   */
+  private readonly userEditedFieldIds = new Set<string>();
   private readonly relatedRecordsByEndpoint = new Map<string, Record<string, unknown>[]>();
   private readonly relatedRecordsLoading = new Set<string>();
+  /**
+   * Related Data property metadata for Dynamic Default relationship resolution.
+   * Keys: `${sourceFieldId}::${property}` and bare `property`.
+   */
+  private readonly relatedPropertyColumns = new Map<string, DynamicDefaultPropertyColumn>();
 
   /** Resolved Country/State/City fields for the current schema. */
   private locationFields: Partial<Record<LocationKind, DynamicField>> = {};
@@ -1676,11 +1699,19 @@ export class DynamicFormComponent implements OnDestroy {
       this.imageUploading.set({});
       this.signatureUploading.set({});
       this.selectSearchQueries.set({});
+      this.answerProtectedFieldIds.clear();
+      this.userEditedFieldIds.clear();
       this.cdr.markForCheck();
       return;
     }
 
     const sorted = sortDynamicFields(fields);
+    const activeFieldIds = new Set(sorted.map((field) => field.id));
+    for (const id of [...this.userEditedFieldIds]) {
+      if (!activeFieldIds.has(id)) {
+        this.userEditedFieldIds.delete(id);
+      }
+    }
 
     queueMicrotask(() => {
       this.sortedFields.set(sorted);
@@ -1689,15 +1720,163 @@ export class DynamicFormComponent implements OnDestroy {
       this.patchPreservedValuesByFieldId(preservedValues, sorted);
       this.imageUploading.set({});
       this.signatureUploading.set({});
+      this.rebuildAnswerProtectedFieldIds(preservedValues, sorted);
       this.subscribeToFormChanges();
       this.setupLocationDependencies(sorted);
       this.prefetchRelatedRecordsForSetValue(sorted);
+      // Dynamic defaults first; Conditional Logic Set Value runs after and wins
+      // when an active setValue rule targets the same field.
+      this.applyDynamicDefaultValues();
       this.refreshConditionalEffects();
       this.emitNormalizedValue();
       this.formReady.set(true);
       this.cdr.markForCheck();
       queueMicrotask(() => this.syncSignaturePadsFromValues());
     });
+  }
+
+  /**
+   * Seed durable answer protection for dynamic-default targets that already
+   * carry submitted/draft answers (or user-edited preserved values).
+   */
+  private rebuildAnswerProtectedFieldIds(
+    preserved: Map<string, unknown>,
+    fields: DynamicField[],
+  ): void {
+    this.answerProtectedFieldIds.clear();
+    for (const id of this.buildSkipFieldIdsForDefaults(preserved, fields)) {
+      this.answerProtectedFieldIds.add(id);
+    }
+  }
+
+  private buildSkipFieldIdsForDefaults(
+    preserved: Map<string, unknown>,
+    fields: DynamicField[],
+  ): Set<string> {
+    const skip = new Set<string>();
+    for (const field of fields) {
+      if (!isDynamicDefaultValueSource(field.defaultValueSource)) {
+        continue;
+      }
+
+      // Assignment / draft answers are hydrated onto field.value before build.
+      if (hasPopulatedAnswerValue(field.value)) {
+        skip.add(field.id);
+        continue;
+      }
+
+      // Preserve user-edited values across schema rebuilds.
+      if (
+        this.userEditedFieldIds.has(field.id) &&
+        preserved.has(field.id) &&
+        hasPopulatedAnswerValue(preserved.get(field.id))
+      ) {
+        skip.add(field.id);
+      }
+    }
+    return skip;
+  }
+
+  private resolveDynamicDefaultSkipFieldIds(): Set<string> {
+    this.captureUserEditedFieldsFromControls();
+    return collectDynamicDefaultSkipFieldIds({
+      answerProtectedFieldIds: this.answerProtectedFieldIds,
+      userEditedFieldIds: this.userEditedFieldIds,
+      dirtyOrTouchedFieldIds: this.collectDirtyOrTouchedFieldIds(),
+    });
+  }
+
+  private collectDirtyOrTouchedFieldIds(): Set<string> {
+    const ids = new Set<string>();
+    if (!this.form) {
+      return ids;
+    }
+    for (const field of this.sortedFields()) {
+      const control = this.form.get(field.name);
+      if (control?.dirty || control?.touched) {
+        ids.add(field.id);
+      }
+    }
+    return ids;
+  }
+
+  /**
+   * Promote dirty/touched controls into the durable user-edited set.
+   * Programmatic default patches use `{ emitEvent: false }` and do not mark dirty.
+   */
+  private captureUserEditedFieldsFromControls(): void {
+    if (!this.form) {
+      return;
+    }
+    for (const field of this.sortedFields()) {
+      const control = this.form.get(field.name);
+      if (control?.dirty || control?.touched) {
+        this.userEditedFieldIds.add(field.id);
+      }
+    }
+  }
+
+  private applyDynamicDefaultValues(): void {
+    if (!this.form || this.applyingDynamicDefaults || this.applyingConditionalState) {
+      return;
+    }
+
+    const fields = this.sortedFields();
+    if (!fields.length) {
+      return;
+    }
+
+    this.applyingDynamicDefaults = true;
+    try {
+      const valuesByFieldId = buildValuesByFieldId(fields, this.form.getRawValue());
+      const fieldsById = new Map(fields.map((field) => [field.id, field]));
+      const lookup: RelatedRecordLookup = {
+        recordsByEndpoint: this.relatedRecordsByEndpoint,
+      };
+      const skip = this.resolveDynamicDefaultSkipFieldIds();
+
+      resolveDynamicDefaultValues(fields, {
+        skipFieldIds: skip,
+        valuesByFieldId,
+        fieldsById,
+        lookup,
+        relatedPropertyColumns: this.relatedPropertyColumns,
+        applyValue: (field, value) => {
+          if (skip.has(field.id) || this.userEditedFieldIds.has(field.id)) {
+            return false;
+          }
+          const control = this.form.get(field.name || '');
+          if (!control) {
+            return false;
+          }
+          // User may have interacted since skip was built.
+          if (control.dirty || control.touched) {
+            this.userEditedFieldIds.add(field.id);
+            return false;
+          }
+
+          let nextValue: unknown = value;
+          if (isMeasurementFieldType(field.type)) {
+            nextValue = normalizeMeasurementValue(value, field.type, {
+              unitMode: normalizeMeasurementUnitMode(field.unitMode),
+              unit: field.unit,
+            });
+          } else if (field.type === 'time') {
+            nextValue = normalizeTimeFieldValue(value);
+          }
+
+          if (!shouldApplyDynamicDefaultResolvedValue(control.value, nextValue)) {
+            return false;
+          }
+
+          // emitEvent: false — do not re-enter valueChanges / mark user-edited.
+          control.setValue(nextValue, { emitEvent: false });
+          return true;
+        },
+      });
+    } finally {
+      this.applyingDynamicDefaults = false;
+    }
   }
 
   private collectPreservedValuesByFieldId(): Map<string, unknown> {
@@ -1758,10 +1937,15 @@ export class DynamicFormComponent implements OnDestroy {
   private subscribeToFormChanges(): void {
     this.formChangesSub = merge(this.form.valueChanges, this.form.statusChanges).subscribe(
       () => {
-        if (this.applyingConditionalState) {
+        if (this.applyingConditionalState || this.applyingDynamicDefaults) {
           return;
         }
 
+        // Capture user edits before auto-population so target edits stay protected
+        // while source edits can still drive dependent defaults.
+        this.captureUserEditedFieldsFromControls();
+        this.applyDynamicDefaultValues();
+        // Set Value runs after dynamic defaults so active conditional actions win.
         this.refreshConditionalEffects();
         this.emitNormalizedValue();
         this.cdr.markForCheck();
@@ -1968,44 +2152,118 @@ export class DynamicFormComponent implements OnDestroy {
 
   private prefetchRelatedRecordsForSetValue(fields: DynamicField[]): void {
     const endpoints = new Set<string>();
+    const relatedDataPairs: Array<{ sourceFieldId: string; property: string; endpoint: string }> =
+      [];
 
-    for (const field of fields) {
-      const rules = normalizeFieldConditionRules(field.condition).filter(
-        logic => !!logic.enabled && hasSetValueAction(logic),
-      );
+    const collectEndpointsFromSource = (
+      source: ReturnType<typeof normalizeValueSource> | null | undefined,
+    ): void => {
+      if (!source) {
+        return;
+      }
 
-      for (const logic of rules) {
-        const source = getPrimarySetValueSource(logic);
-        if (!source) {
-          continue;
+      for (const fieldId of collectValueSourceFieldIds(source)) {
+        const sourceField = fields.find((item) => item.id === fieldId);
+        const endpoint = String(sourceField?.optionSource?.endpoint ?? '').trim();
+        if (endpoint) {
+          endpoints.add(endpoint);
         }
+      }
 
-        for (const fieldId of collectValueSourceFieldIds(source)) {
-          const sourceField = fields.find(item => item.id === fieldId);
+      const visit = (value: ReturnType<typeof normalizeValueSource>): void => {
+        if (value.kind === 'relatedData') {
+          const sourceField = fields.find((item) => item.id === value.sourceFieldId);
           const endpoint = String(sourceField?.optionSource?.endpoint ?? '').trim();
           if (endpoint) {
             endpoints.add(endpoint);
-          }
-        }
-
-        const visit = (value: ReturnType<typeof normalizeValueSource>): void => {
-          if (value.kind === 'relatedData') {
-            const sourceField = fields.find(item => item.id === value.sourceFieldId);
-            const endpoint = String(sourceField?.optionSource?.endpoint ?? '').trim();
-            if (endpoint) {
-              endpoints.add(endpoint);
+            const property = String(value.property ?? '').trim();
+            if (property) {
+              relatedDataPairs.push({
+                sourceFieldId: value.sourceFieldId,
+                property,
+                endpoint,
+              });
             }
           }
-          if (value.kind === 'expression') {
-            visit(normalizeValueSource(value.left));
-            visit(normalizeValueSource(value.right));
-          }
-        };
-        visit(normalizeValueSource(source));
+        }
+        if (value.kind === 'expression') {
+          visit(normalizeValueSource(value.left));
+          visit(normalizeValueSource(value.right));
+        }
+      };
+      visit(normalizeValueSource(source));
+    };
+
+    for (const field of fields) {
+      const rules = normalizeFieldConditionRules(field.condition).filter(
+        (logic) => !!logic.enabled && hasSetValueAction(logic),
+      );
+
+      for (const logic of rules) {
+        collectEndpointsFromSource(getPrimarySetValueSource(logic));
       }
+
+      collectEndpointsFromSource(normalizeDefaultValueSource(field.defaultValueSource));
     }
 
     this.loadRelatedRecordsForEndpoints(endpoints);
+    this.prefetchRelatedPropertyMetadata(relatedDataPairs);
+  }
+
+  /**
+   * Load module column metadata so relationship FKs (Role, Job Position, …)
+   * can resolve to display labels, and prefetch nested related modules.
+   */
+  private prefetchRelatedPropertyMetadata(
+    pairs: Array<{ sourceFieldId: string; property: string; endpoint: string }>,
+  ): void {
+    const uniqueEndpoints = new Set(
+      pairs.map((pair) => pair.endpoint).filter(Boolean),
+    );
+
+    for (const endpoint of uniqueEndpoints) {
+      this.dynamicModuleOptions.getModuleData(endpoint).subscribe({
+        next: (data) => {
+          if (data.records?.length) {
+            this.storeRelatedRecords(endpoint, data.records);
+          }
+
+          const nestedEndpoints = new Set<string>();
+          for (const pair of pairs.filter((item) => item.endpoint === endpoint)) {
+            const column = (data.columns || []).find(
+              (item) => String(item.id) === pair.property,
+            );
+            if (!column) {
+              continue;
+            }
+            const meta: DynamicDefaultPropertyColumn = {
+              id: column.id,
+              label: column.label,
+              type: column.type,
+              relatedEndpoint: column.relatedEndpoint,
+              relatedDisplayKey: column.relatedDisplayKey,
+            };
+            this.relatedPropertyColumns.set(
+              `${pair.sourceFieldId}::${pair.property}`,
+              meta,
+            );
+            this.relatedPropertyColumns.set(pair.property, meta);
+            if (column.relatedEndpoint) {
+              nestedEndpoints.add(column.relatedEndpoint);
+            }
+          }
+
+          if (nestedEndpoints.size) {
+            this.loadRelatedRecordsForEndpoints(nestedEndpoints);
+          } else {
+            this.refreshSetValueAfterRelatedLoad();
+          }
+        },
+        error: () => {
+          // Column metadata is best-effort; scalar resolution still works.
+        },
+      });
+    }
   }
 
   private loadRelatedRecordsForEndpoints(endpoints: Iterable<string>): void {
@@ -2079,8 +2337,12 @@ export class DynamicFormComponent implements OnDestroy {
     if (!this.formReady() || !this.form) {
       return;
     }
+    // Re-resolve dynamic defaults once related records are available.
+    // Uses durable answer / user-edited skip sets (not a bare dirty-only skip).
+    this.applyDynamicDefaultValues();
     this.refreshConditionalEffects();
     this.emitNormalizedValue();
+    this.cdr.markForCheck();
   }
 
   private emitNormalizedValue(): void {

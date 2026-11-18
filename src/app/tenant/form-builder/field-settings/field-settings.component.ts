@@ -59,6 +59,15 @@ import {
   validateConditionRule,
   validateConditionRules,
   wouldCreateCircularDependency,
+  getDynamicDefaultValueSourceKindsForTarget,
+  supportsDynamicDefaultCalculation,
+  cloneDefaultValueSource,
+  describeDefaultValueSource,
+  filterRelatedPropertiesForDynamicDefault,
+  isCompatibleDynamicDefaultSourceField,
+  isDynamicDefaultValueSource,
+  normalizeDefaultValueSource,
+  resolveRelatedPropertyDisplayLabel,
 } from '../../../shared/conditional-logic';
 import { FormField, FieldOption, OptionSource, RangeFieldType, RangeTimeFormat } from '../models/form-field.model';
 import { ImageFile } from '../models/image-file.model';
@@ -157,6 +166,8 @@ export class FieldSettingsComponent implements OnDestroy {
   private readonly viewContainerRef = inject(ViewContainerRef);
   private readonly schemaSignal = signal<FormField[]>([]);
   private readonly selectedFieldIdSignal = signal<string | null>(null);
+  /** Bumps when Related Data column labels load so Dynamic Default summaries refresh. */
+  private readonly relatedPropertyLabelsVersion = signal(0);
   readonly dynamicOptionsDropdownGroup = 'form-builder-dynamic-options';
 
   @ViewChild('dynamicOptionsExpandTpl')
@@ -436,6 +447,7 @@ export class FieldSettingsComponent implements OnDestroy {
       isShow: this._field.isShow !== false,
       isReadonly: this._field.isReadonly === true,
       defaultValue: this._field.defaultValue,
+      defaultValueSource: cloneDefaultValueSource(this._field.defaultValueSource),
       options: [...(this._field.options || [])],
       optionSource: this.resolveEmittedOptionSource(),
       referenceImages:
@@ -964,6 +976,448 @@ export class FieldSettingsComponent implements OnDestroy {
   }
 
   readonly currentUserDefaultToken = CURRENT_USER_DEFAULT_TOKEN;
+
+  /** Modal for choosing Static vs Dynamic default value. */
+  valueModeModalOpen = false;
+  /** Draft mode while the modal is open. */
+  valueModeDraft: 'static' | 'dynamic' = 'static';
+  /** Draft dynamic source edited inside the modal before Apply. */
+  valueModeDraftSource: ValueSource | null = null;
+
+  get supportsDynamicDefaultValue(): boolean {
+    return !!this._field && supportsSetValueFieldType(this._field.type);
+  }
+
+  get usesDynamicDefaultValue(): boolean {
+    return isDynamicDefaultValueSource(this._field?.defaultValueSource);
+  }
+
+  get showsStaticDefaultControls(): boolean {
+    return this.supportsConfiguredValue && !this.usesDynamicDefaultValue;
+  }
+
+  get dynamicDefaultSourceSummary(): string {
+    // Touch the version signal so summaries refresh after async column loads.
+    this.relatedPropertyLabelsVersion();
+    return describeDefaultValueSource(
+      this._field?.defaultValueSource,
+      (fieldId) => this.selectFieldLabel(this.schemaSignal(), fieldId),
+      {
+        propertyLabelByKey: (propertyKey, sourceFieldId) =>
+          this.resolveDefaultValueRelatedPropertyLabel(propertyKey, sourceFieldId),
+      },
+    );
+  }
+
+  /**
+   * Display-only Related Data property label for Dynamic Default summaries.
+   * Uses cached module column labels when available.
+   */
+  private resolveDefaultValueRelatedPropertyLabel(
+    propertyKey: string,
+    sourceFieldId?: string,
+  ): string {
+    const key = String(propertyKey ?? '').trim();
+    if (!key) {
+      return '';
+    }
+    const sourceId = String(sourceFieldId ?? '').trim();
+    const columns = sourceId
+      ? this.relatedPropertyCache.get(sourceId) ?? []
+      : [];
+    const fromCache = this.selectColumnLabel(columns, key);
+    if (fromCache && !/^fld_/i.test(fromCache)) {
+      return fromCache;
+    }
+    return resolveRelatedPropertyDisplayLabel(key, {
+      mappedLabel: fromCache || null,
+    });
+  }
+
+  get dynamicDefaultValueSourceKinds(): Array<{ value: ValueSourceKind; label: string }> {
+    return getDynamicDefaultValueSourceKindsForTarget(this._field).map((value) => ({
+      value,
+      label: VALUE_SOURCE_KIND_LABELS[value],
+    }));
+  }
+
+  get defaultValueSource(): ValueSource {
+    return (
+      normalizeDefaultValueSource(this.valueModeDraftSource) ??
+      createDefaultValueSource('field')
+    );
+  }
+
+  get defaultValueSourceKind(): ValueSourceKind {
+    return this.defaultValueSource.kind;
+  }
+
+  openValueModeModal(): void {
+    if (!this._field || !this.isFieldEditable || !this.supportsConfiguredValue) {
+      return;
+    }
+
+    const dynamic = this.usesDynamicDefaultValue;
+    this.valueModeDraft = dynamic ? 'dynamic' : 'static';
+    this.valueModeDraftSource = dynamic
+      ? cloneDefaultValueSource(this._field.defaultValueSource)
+      : this.supportsDynamicDefaultValue
+        ? createDefaultValueSource('field')
+        : null;
+    this.valueModeModalOpen = true;
+
+    if (this.valueModeDraft === 'dynamic' && this.valueModeDraftSource) {
+      this.prefetchDefaultValueRelatedProperties(this.valueModeDraftSource);
+    }
+  }
+
+  closeValueModeModal(): void {
+    this.valueModeModalOpen = false;
+    this.valueModeDraftSource = null;
+  }
+
+  selectValueModeDraft(mode: 'static' | 'dynamic'): void {
+    if (mode === 'dynamic' && !this.supportsDynamicDefaultValue) {
+      return;
+    }
+    this.valueModeDraft = mode;
+    if (mode === 'dynamic' && !this.valueModeDraftSource) {
+      this.valueModeDraftSource = createDefaultValueSource('field');
+    }
+  }
+
+  applyValueModeModal(): void {
+    if (!this._field || !this.isFieldEditable) {
+      return;
+    }
+
+    if (this.valueModeDraft === 'static') {
+      this._field.defaultValueSource = null;
+      this.valueModeModalOpen = false;
+      this.valueModeDraftSource = null;
+      this.onChange();
+      return;
+    }
+
+    if (!this.supportsDynamicDefaultValue) {
+      this.closeValueModeModal();
+      return;
+    }
+
+    const source = normalizeDefaultValueSource(this.valueModeDraftSource);
+    if (!source) {
+      this.toastr.warning('Configure a dynamic value source before applying.');
+      return;
+    }
+    if (
+      source.kind === 'expression' &&
+      !supportsDynamicDefaultCalculation(this._field)
+    ) {
+      this.toastr.warning('Calculation is only available for numeric fields.');
+      return;
+    }
+
+    this._field.defaultValueSource = source;
+    // Clear static default so the two modes cannot conflict.
+    this._field.defaultValue = this.clearStaticDefaultForType(this._field.type);
+    this.valueModeModalOpen = false;
+    this.valueModeDraftSource = null;
+    this.onChange();
+  }
+
+  private clearStaticDefaultForType(type: string | undefined): unknown {
+    if (type === 'checkbox' || (type === 'select' && this.selectionType === 'multi')) {
+      return [];
+    }
+    if (type === 'number' || type === 'rating') {
+      return null;
+    }
+    if (type === 'range') {
+      return { from: '', to: '' };
+    }
+    if (
+      type === 'price' ||
+      type === 'length' ||
+      type === 'mass' ||
+      type === 'volume' ||
+      type === 'temperature'
+    ) {
+      return { value: '', unit: this._field?.unit ?? '' };
+    }
+    return '';
+  }
+
+  private patchDefaultValueSourceDraft(source: ValueSource): void {
+    const next = normalizeValueSource(source);
+    if (next.kind === 'fixed') {
+      // Fixed belongs to Static mode — coerce to field for dynamic drafts.
+      this.valueModeDraftSource = createDefaultValueSource('field');
+      return;
+    }
+    this.valueModeDraftSource = next;
+  }
+
+  private prefetchDefaultValueRelatedProperties(source: ValueSource): void {
+    for (const fieldId of collectValueSourceFieldIds(source)) {
+      const field = this.schemaSignal().find((item) => item.id === fieldId);
+      if (!field) {
+        continue;
+      }
+      const optionSource = normalizeOptionSource(field.optionSource);
+      if (optionSource?.type === 'dynamic' && optionSource.endpoint) {
+        this.loadRelatedProperties(fieldId);
+      }
+    }
+  }
+
+  onDefaultValueSourceKindChange(kind: ValueSourceKind): void {
+    this.overlayService.close();
+    const allowed = getDynamicDefaultValueSourceKindsForTarget(this._field);
+    if (!(allowed as readonly ValueSourceKind[]).includes(kind)) {
+      return;
+    }
+    if (kind === 'expression' && !supportsDynamicDefaultCalculation(this._field)) {
+      return;
+    }
+    this.patchDefaultValueSourceDraft(createDefaultValueSource(kind));
+  }
+
+  get defaultValueFieldId(): string {
+    const source = this.defaultValueSource;
+    return source.kind === 'field' ? source.fieldId : '';
+  }
+
+  get defaultValueRelatedSourceFieldId(): string {
+    const source = this.defaultValueSource;
+    return source.kind === 'relatedData' ? source.sourceFieldId : '';
+  }
+
+  get defaultValueRelatedProperty(): string {
+    const source = this.defaultValueSource;
+    return source.kind === 'relatedData' ? source.property : '';
+  }
+
+  get defaultValueExpressionOp(): ExpressionOp {
+    const source = this.defaultValueSource;
+    return source.kind === 'expression' ? source.op : 'multiply';
+  }
+
+  get defaultValueExpressionLeft(): ValueSource {
+    const source = this.defaultValueSource;
+    return source.kind === 'expression'
+      ? source.left
+      : createDefaultValueSource('relatedData');
+  }
+
+  get defaultValueExpressionRight(): ValueSource {
+    const source = this.defaultValueSource;
+    return source.kind === 'expression'
+      ? source.right
+      : createDefaultValueSource('field');
+  }
+
+  get defaultValueExpressionLeftKind(): ValueSourceKind {
+    return this.defaultValueExpressionLeft.kind;
+  }
+
+  get defaultValueExpressionRightKind(): ValueSourceKind {
+    return this.defaultValueExpressionRight.kind;
+  }
+
+  get defaultValueExpressionLeftFixedValue(): unknown {
+    const source = this.defaultValueExpressionLeft;
+    return source.kind === 'fixed' ? source.value : '';
+  }
+
+  get defaultValueExpressionRightFixedValue(): unknown {
+    const source = this.defaultValueExpressionRight;
+    return source.kind === 'fixed' ? source.value : '';
+  }
+
+  get defaultValueExpressionLeftFieldId(): string {
+    const source = this.defaultValueExpressionLeft;
+    return source.kind === 'field' ? source.fieldId : '';
+  }
+
+  get defaultValueExpressionRightFieldId(): string {
+    const source = this.defaultValueExpressionRight;
+    return source.kind === 'field' ? source.fieldId : '';
+  }
+
+  get defaultValueExpressionLeftRelatedSourceFieldId(): string {
+    const source = this.defaultValueExpressionLeft;
+    return source.kind === 'relatedData' ? source.sourceFieldId : '';
+  }
+
+  get defaultValueExpressionRightRelatedSourceFieldId(): string {
+    const source = this.defaultValueExpressionRight;
+    return source.kind === 'relatedData' ? source.sourceFieldId : '';
+  }
+
+  get defaultValueExpressionLeftRelatedProperty(): string {
+    const source = this.defaultValueExpressionLeft;
+    return source.kind === 'relatedData' ? source.property : '';
+  }
+
+  get defaultValueExpressionRightRelatedProperty(): string {
+    const source = this.defaultValueExpressionRight;
+    return source.kind === 'relatedData' ? source.property : '';
+  }
+
+  onDefaultValueFieldChange(fieldId: string): void {
+    this.overlayService.close();
+    if (
+      fieldId &&
+      this._field &&
+      wouldCreateCircularDependency(this._field.id, fieldId, this.schemaSignal())
+    ) {
+      this.toastr.warning('This field would create a circular dependency.');
+      return;
+    }
+    this.patchDefaultValueSourceDraft({ kind: 'field', fieldId });
+  }
+
+  onDefaultValueRelatedSourceChange(sourceFieldId: string): void {
+    this.overlayService.close();
+    this.patchDefaultValueSourceDraft({
+      kind: 'relatedData',
+      sourceFieldId,
+      property: '',
+    });
+    if (sourceFieldId) {
+      this.loadRelatedProperties(sourceFieldId);
+    }
+  }
+
+  onDefaultValueRelatedPropertyChange(property: string): void {
+    this.overlayService.close();
+    const current = this.defaultValueSource;
+    const sourceFieldId =
+      current.kind === 'relatedData' ? current.sourceFieldId : '';
+    this.patchDefaultValueSourceDraft({
+      kind: 'relatedData',
+      sourceFieldId,
+      property,
+    });
+  }
+
+  onDefaultValueExpressionOpChange(op: ExpressionOp): void {
+    this.overlayService.close();
+    const current = this.defaultValueSource;
+    if (current.kind !== 'expression') {
+      return;
+    }
+    this.patchDefaultValueSourceDraft({ ...current, op });
+  }
+
+  onDefaultValueExpressionSideKindChange(
+    side: 'left' | 'right',
+    kind: ValueSourceKind,
+  ): void {
+    this.overlayService.close();
+    if (kind === 'expression') {
+      return;
+    }
+    const current = this.defaultValueSource;
+    if (current.kind !== 'expression') {
+      return;
+    }
+    const nextSide = createDefaultValueSource(kind);
+    this.patchDefaultValueSourceDraft({
+      ...current,
+      left: side === 'left' ? nextSide : current.left,
+      right: side === 'right' ? nextSide : current.right,
+    });
+  }
+
+  onDefaultValueExpressionSideFieldChange(
+    side: 'left' | 'right',
+    fieldId: string,
+  ): void {
+    this.overlayService.close();
+    if (
+      fieldId &&
+      this._field &&
+      wouldCreateCircularDependency(this._field.id, fieldId, this.schemaSignal())
+    ) {
+      this.toastr.warning('This field would create a circular dependency.');
+      return;
+    }
+    const current = this.defaultValueSource;
+    if (current.kind !== 'expression') {
+      return;
+    }
+    const nextSide: ValueSource = { kind: 'field', fieldId };
+    this.patchDefaultValueSourceDraft({
+      ...current,
+      left: side === 'left' ? nextSide : current.left,
+      right: side === 'right' ? nextSide : current.right,
+    });
+  }
+
+  onDefaultValueExpressionSideFixedChange(
+    side: 'left' | 'right',
+    value: unknown,
+  ): void {
+    const current = this.defaultValueSource;
+    if (current.kind !== 'expression') {
+      return;
+    }
+    const nextSide: ValueSource = { kind: 'fixed', value };
+    this.patchDefaultValueSourceDraft({
+      ...current,
+      left: side === 'left' ? nextSide : current.left,
+      right: side === 'right' ? nextSide : current.right,
+    });
+  }
+
+  onDefaultValueExpressionSideRelatedSourceChange(
+    side: 'left' | 'right',
+    sourceFieldId: string,
+  ): void {
+    this.overlayService.close();
+    const current = this.defaultValueSource;
+    if (current.kind !== 'expression') {
+      return;
+    }
+    const nextSide: ValueSource = {
+      kind: 'relatedData',
+      sourceFieldId,
+      property: '',
+    };
+    this.patchDefaultValueSourceDraft({
+      ...current,
+      left: side === 'left' ? nextSide : current.left,
+      right: side === 'right' ? nextSide : current.right,
+    });
+    if (sourceFieldId) {
+      this.loadRelatedProperties(sourceFieldId);
+    }
+  }
+
+  onDefaultValueExpressionSideRelatedPropertyChange(
+    side: 'left' | 'right',
+    property: string,
+  ): void {
+    this.overlayService.close();
+    const current = this.defaultValueSource;
+    if (current.kind !== 'expression') {
+      return;
+    }
+    const existing = side === 'left' ? current.left : current.right;
+    const sourceFieldId =
+      existing.kind === 'relatedData' ? existing.sourceFieldId : '';
+    const nextSide: ValueSource = {
+      kind: 'relatedData',
+      sourceFieldId,
+      property,
+    };
+    this.patchDefaultValueSourceDraft({
+      ...current,
+      left: side === 'left' ? nextSide : current.left,
+      right: side === 'right' ? nextSide : current.right,
+    });
+  }
 
   get configuredDefaultValue(): unknown {
     return this._field?.defaultValue ?? '';
@@ -2418,6 +2872,35 @@ export class FieldSettingsComponent implements OnDestroy {
     });
   }
 
+  /**
+   * Direct Form Field sources for Dynamic Default Value only.
+   * Excludes dynamic record selects for text/email targets (use Related Data instead).
+   */
+  get defaultValueFormFields(): FormField[] {
+    if (!this._field) {
+      return [];
+    }
+
+    return this.schemaSignal().filter((field) => {
+      if (field.id === this._field!.id) {
+        return false;
+      }
+      if (!isCompatibleDynamicDefaultSourceField(this._field, field)) {
+        return false;
+      }
+      if (
+        wouldCreateCircularDependency(
+          this._field!.id,
+          field.id,
+          this.schemaSignal(),
+        )
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }
+
   relatedPropertiesFor(sourceFieldId: string | null | undefined): ModuleColumnOption[] {
     if (!sourceFieldId) {
       return [];
@@ -2426,6 +2909,22 @@ export class FieldSettingsComponent implements OnDestroy {
     const records = this.relatedRecordsCache.get(sourceFieldId) ?? [];
     const targetKind = resolveSetValueFieldKind(this._field);
     return filterRelatedPropertiesForTargetKind(columns, records, targetKind);
+  }
+
+  /** Related Data properties filtered for Dynamic Default Value targets. */
+  defaultValueRelatedProperties(
+    sourceFieldId: string | null | undefined,
+  ): ModuleColumnOption[] {
+    if (!sourceFieldId || !this._field) {
+      return [];
+    }
+    const columns = this.relatedPropertyCache.get(sourceFieldId) ?? [];
+    const records = this.relatedRecordsCache.get(sourceFieldId) ?? [];
+    return filterRelatedPropertiesForDynamicDefault(
+      columns,
+      records,
+      this._field,
+    ) as ModuleColumnOption[];
   }
 
   isRelatedPropertiesLoading(sourceFieldId: string | null | undefined): boolean {
@@ -2740,11 +3239,13 @@ export class FieldSettingsComponent implements OnDestroy {
         this.relatedPropertyLoading.delete(sourceFieldId);
         this.relatedPropertyCache.set(sourceFieldId, data.columns || []);
         this.relatedRecordsCache.set(sourceFieldId, data.records || []);
+        this.relatedPropertyLabelsVersion.update((version) => version + 1);
       },
       error: () => {
         this.relatedPropertyLoading.delete(sourceFieldId);
         this.relatedPropertyCache.set(sourceFieldId, []);
         this.relatedRecordsCache.set(sourceFieldId, []);
+        this.relatedPropertyLabelsVersion.update((version) => version + 1);
       },
     });
   }
@@ -3499,6 +4000,7 @@ export class FieldSettingsComponent implements OnDestroy {
         value.defaultValue !== undefined && value.defaultValue !== null
           ? value.defaultValue
           : '',
+      defaultValueSource: cloneDefaultValueSource(value.defaultValueSource),
       width: value.width ?? 12,
       validations: value.validations || {},
       condition: serializeConditionalLogic(value.condition),
@@ -3594,6 +4096,12 @@ export class FieldSettingsComponent implements OnDestroy {
     this.ensureConditionSourceIsValid(false);
     if (hasSetValueAction(this.conditionEditor)) {
       this.prefetchSetValueRelatedProperties();
+    }
+    // Prefetch Related Data column labels so the Dynamic Default summary can
+    // show human-readable property names instead of raw fld_… keys.
+    const defaultSource = normalizeDefaultValueSource(this._field.defaultValueSource);
+    if (defaultSource) {
+      this.prefetchDefaultValueRelatedProperties(defaultSource);
     }
   }
 

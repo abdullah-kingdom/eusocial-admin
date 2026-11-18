@@ -181,6 +181,8 @@ function toBuilderField(
     ...builder,
     value: field.defaultValue ?? field.value ?? builder.value,
     defaultValue: field.defaultValue ?? field.value ?? builder.defaultValue,
+    defaultValueSource:
+      field.defaultValueSource ?? builder.defaultValueSource ?? null,
     order: fieldIndex,
   };
 }

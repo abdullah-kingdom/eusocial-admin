@@ -223,6 +223,9 @@ export function sanitizeField(
     fieldKey: readOptionalString(field, 'fieldKey', 'field_key'),
     value: field.value ?? field.defaultValue ?? null,
     defaultValue: field.defaultValue ?? null,
+    defaultValueSource: field.defaultValueSource
+      ? JSON.parse(JSON.stringify(field.defaultValueSource))
+      : null,
     validations: field.validations ? { ...field.validations } : {},
     width: field.width ?? 12,
     order: order ?? field.order,
