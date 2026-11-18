@@ -39,9 +39,13 @@ import {
   normalizeValueSource,
   RelatedRecordLookup,
   resolveAllConditionalEffects,
+  resolveDynamicDefaultValues,
   resolveSetValueFromAction,
   setValuesEqual,
   supportsSetValueFieldType,
+  hasPopulatedAnswerValue,
+  isDynamicDefaultValueSource,
+  normalizeDefaultValueSource,
 } from '../conditional-logic';
 import { DynamicModuleOptionsService } from '../../tenant/form-builder/services/dynamic-module-options.service';
 import { FormStorageService } from '../../tenant/forms/services/form-storage.service';
@@ -1692,11 +1696,91 @@ export class DynamicFormComponent implements OnDestroy {
       this.subscribeToFormChanges();
       this.setupLocationDependencies(sorted);
       this.prefetchRelatedRecordsForSetValue(sorted);
+      this.applyDynamicDefaultValues(
+        this.buildSkipFieldIdsForDefaults(preservedValues, sorted),
+      );
       this.refreshConditionalEffects();
       this.emitNormalizedValue();
       this.formReady.set(true);
       this.cdr.markForCheck();
       queueMicrotask(() => this.syncSignaturePadsFromValues());
+    });
+  }
+
+  private buildSkipFieldIdsForDefaults(
+    preserved: Map<string, unknown>,
+    fields: DynamicField[],
+  ): Set<string> {
+    const skip = new Set<string>();
+    for (const field of fields) {
+      if (preserved.has(field.id) && hasPopulatedAnswerValue(preserved.get(field.id))) {
+        skip.add(field.id);
+        continue;
+      }
+      // Hydrated answers also land on field.value / defaultValue before build.
+      if (
+        hasPopulatedAnswerValue(field.value) &&
+        !isDynamicDefaultValueSource(field.defaultValueSource)
+      ) {
+        // Keep skip only when the populated value is an answer, not a static default.
+        // Static defaults should still allow dynamic defaults? No — if static default
+        // already populated the control via getInitialFieldValue, dynamic source mode
+        // clears static on save. Skip only true preserved answers above.
+      }
+    }
+    return skip;
+  }
+
+  private applyDynamicDefaultValues(skipFieldIds?: ReadonlySet<string>): void {
+    if (!this.form) {
+      return;
+    }
+
+    const fields = this.sortedFields();
+    if (!fields.length) {
+      return;
+    }
+
+    const valuesByFieldId = buildValuesByFieldId(fields, this.form.getRawValue());
+    const fieldsById = new Map(fields.map((field) => [field.id, field]));
+    const lookup: RelatedRecordLookup = {
+      recordsByEndpoint: this.relatedRecordsByEndpoint,
+    };
+
+    const skip = new Set(skipFieldIds ?? []);
+    for (const field of fields) {
+      const control = this.form.get(field.name);
+      // Never overwrite values the user has interacted with.
+      if (control?.dirty || control?.touched) {
+        skip.add(field.id);
+      }
+    }
+
+    resolveDynamicDefaultValues(fields, {
+      skipFieldIds: skip,
+      valuesByFieldId,
+      fieldsById,
+      lookup,
+      applyValue: (field, value) => {
+        const control = this.form.get(field.name || '');
+        if (!control) {
+          return false;
+        }
+        let nextValue: unknown = value;
+        if (isMeasurementFieldType(field.type)) {
+          nextValue = normalizeMeasurementValue(value, field.type, {
+            unitMode: normalizeMeasurementUnitMode(field.unitMode),
+            unit: field.unit,
+          });
+        } else if (field.type === 'time') {
+          nextValue = normalizeTimeFieldValue(value);
+        }
+        if (setValuesEqual(control.value, nextValue)) {
+          return true;
+        }
+        control.setValue(nextValue, { emitEvent: false });
+        return true;
+      },
     });
   }
 
@@ -1969,40 +2053,47 @@ export class DynamicFormComponent implements OnDestroy {
   private prefetchRelatedRecordsForSetValue(fields: DynamicField[]): void {
     const endpoints = new Set<string>();
 
-    for (const field of fields) {
-      const rules = normalizeFieldConditionRules(field.condition).filter(
-        logic => !!logic.enabled && hasSetValueAction(logic),
-      );
+    const collectEndpointsFromSource = (
+      source: ReturnType<typeof normalizeValueSource> | null | undefined,
+    ): void => {
+      if (!source) {
+        return;
+      }
 
-      for (const logic of rules) {
-        const source = getPrimarySetValueSource(logic);
-        if (!source) {
-          continue;
+      for (const fieldId of collectValueSourceFieldIds(source)) {
+        const sourceField = fields.find((item) => item.id === fieldId);
+        const endpoint = String(sourceField?.optionSource?.endpoint ?? '').trim();
+        if (endpoint) {
+          endpoints.add(endpoint);
         }
+      }
 
-        for (const fieldId of collectValueSourceFieldIds(source)) {
-          const sourceField = fields.find(item => item.id === fieldId);
+      const visit = (value: ReturnType<typeof normalizeValueSource>): void => {
+        if (value.kind === 'relatedData') {
+          const sourceField = fields.find((item) => item.id === value.sourceFieldId);
           const endpoint = String(sourceField?.optionSource?.endpoint ?? '').trim();
           if (endpoint) {
             endpoints.add(endpoint);
           }
         }
+        if (value.kind === 'expression') {
+          visit(normalizeValueSource(value.left));
+          visit(normalizeValueSource(value.right));
+        }
+      };
+      visit(normalizeValueSource(source));
+    };
 
-        const visit = (value: ReturnType<typeof normalizeValueSource>): void => {
-          if (value.kind === 'relatedData') {
-            const sourceField = fields.find(item => item.id === value.sourceFieldId);
-            const endpoint = String(sourceField?.optionSource?.endpoint ?? '').trim();
-            if (endpoint) {
-              endpoints.add(endpoint);
-            }
-          }
-          if (value.kind === 'expression') {
-            visit(normalizeValueSource(value.left));
-            visit(normalizeValueSource(value.right));
-          }
-        };
-        visit(normalizeValueSource(source));
+    for (const field of fields) {
+      const rules = normalizeFieldConditionRules(field.condition).filter(
+        (logic) => !!logic.enabled && hasSetValueAction(logic),
+      );
+
+      for (const logic of rules) {
+        collectEndpointsFromSource(getPrimarySetValueSource(logic));
       }
+
+      collectEndpointsFromSource(normalizeDefaultValueSource(field.defaultValueSource));
     }
 
     this.loadRelatedRecordsForEndpoints(endpoints);
@@ -2079,6 +2170,8 @@ export class DynamicFormComponent implements OnDestroy {
     if (!this.formReady() || !this.form) {
       return;
     }
+    // Re-resolve dynamic defaults that depend on Related Data records.
+    this.applyDynamicDefaultValues();
     this.refreshConditionalEffects();
     this.emitNormalizedValue();
   }

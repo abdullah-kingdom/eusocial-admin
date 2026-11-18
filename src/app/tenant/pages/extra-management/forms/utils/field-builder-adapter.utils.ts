@@ -1,4 +1,8 @@
-import { cloneFieldCondition, serializeConditionalLogic } from '../../../../../shared/conditional-logic';
+import {
+  cloneFieldCondition,
+  describeDefaultValueSource,
+  serializeConditionalLogic,
+} from '../../../../../shared/conditional-logic';
 import {
   getDefaultCharacterLimit,
   resolveCharacterLimit,
@@ -135,6 +139,9 @@ export function mapConfigFieldToBuilder(field: FormFieldConfig): FormField {
     defaultValue: field.defaultValue ?? field.value ?? '',
     validations: field.validations ? { ...field.validations } : {},
     condition: cloneFieldCondition(field.condition),
+    defaultValueSource: field.defaultValueSource
+      ? JSON.parse(JSON.stringify(field.defaultValueSource))
+      : null,
     maxRating: field.maxRating,
     rangeType: formFieldType === 'range' ? normalizeRangeType(field.rangeType) : undefined,
     rangeMin: field.rangeMin,
@@ -209,6 +216,9 @@ export function mapBuilderFieldToConfig(
     validations: field.validations ? { ...field.validations } : undefined,
     condition: serializeConditionalLogic(field.condition),
     defaultValue: field.defaultValue,
+    defaultValueSource: field.defaultValueSource
+      ? JSON.parse(JSON.stringify(field.defaultValueSource))
+      : null,
     maxRating: field.maxRating,
     rangeType: type === 'range' ? normalizeRangeType(field.rangeType) : undefined,
     rangeMin: field.rangeMin,
@@ -420,6 +430,14 @@ function normalizeConfigFieldValue(
 function resolveConfigPreviewValue(field: FormField): string | string[] | undefined {
   if (field.value != null && field.value !== '') {
     return normalizeConfigFieldValue(field.value);
+  }
+
+  if (field.defaultValueSource) {
+    // Builder canvas cannot always resolve dynamic sources — show a summary.
+    return describeDefaultValueSource(
+      field.defaultValueSource,
+      (fieldId) => fieldId,
+    );
   }
 
   const configured = field.defaultValue;

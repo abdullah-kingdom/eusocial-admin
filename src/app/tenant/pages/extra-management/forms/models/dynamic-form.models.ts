@@ -1,4 +1,8 @@
-import { FieldCondition } from '../../../../../shared/conditional-logic';
+import {
+  FieldCondition,
+  ValueSource,
+  normalizeDefaultValueSource,
+} from '../../../../../shared/conditional-logic';
 import {
   OptionSource,
   SelectSelectionType,
@@ -77,6 +81,8 @@ export interface FormFieldConfig {
   validations?: Record<string, unknown>;
   condition?: FieldCondition;
   defaultValue?: unknown;
+  /** Dynamic default source — independent of Conditional Logic actions. */
+  defaultValueSource?: ValueSource | null;
   /** Maximum rating value (default 5). */
   maxRating?: number;
   /**
@@ -886,6 +892,7 @@ export function stripFieldId(field: FormFieldConfig): Omit<FormFieldConfig, 'id'
   condition?: FieldCondition;
   optionSource?: FormFieldConfig['optionSource'];
   defaultValue?: unknown;
+  defaultValueSource?: ValueSource | null;
 } {
   const {
     fieldTypeName: _fieldTypeName,
@@ -894,12 +901,16 @@ export function stripFieldId(field: FormFieldConfig): Omit<FormFieldConfig, 'id'
     validations: _validations,
     value: _previewValue,
     defaultValue,
+    defaultValueSource,
     options,
     condition,
     optionSource,
     id,
     ...rest
   } = field;
+
+  const normalizedDefaultValueSource =
+    normalizeDefaultValueSource(defaultValueSource);
 
   const normalizedOptions: FormSelectOption[] | undefined =
     optionSource?.type === 'dynamic'
@@ -949,6 +960,9 @@ export function stripFieldId(field: FormFieldConfig): Omit<FormFieldConfig, 'id'
     ...(optionSource ? { optionSource } : {}),
     ...(normalizedOptions ? { options: normalizedOptions } : {}),
     ...(hasDefaultValue ? { defaultValue } : {}),
+    ...(normalizedDefaultValueSource
+      ? { defaultValueSource: normalizedDefaultValueSource }
+      : {}),
   };
 }
 

@@ -1,4 +1,7 @@
-import { FieldCondition } from '../shared/conditional-logic';
+import {
+  FieldCondition,
+  ValueSource,
+} from '../shared/conditional-logic';
 import type {
   MeasurementUnitMode,
   RangeFieldType,
@@ -55,6 +58,8 @@ export interface DynamicField {
   label: string;
   value?: unknown;
   defaultValue?: unknown;
+  /** Dynamic default source — resolved at form init, not via Conditional Logic. */
+  defaultValueSource?: ValueSource | null;
   required?: boolean;
   placeholder?: string;
   width?: number;

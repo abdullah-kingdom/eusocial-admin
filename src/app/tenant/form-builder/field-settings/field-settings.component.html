@@ -244,16 +244,49 @@
   }
 
   <div *ngIf="supportsConfiguredValue" class="space-y-2">
-    <label
-      class="mb-1.5 block"
-      [ngClass]="isFormTemplatePanel ? 'text-sm font-semibold text-[#161616]' : 'text-xs font-medium text-slate-600'"
-    >Value</label>
+    <div class="mb-1.5 flex items-center justify-between gap-2">
+      <label
+        class="block"
+        [ngClass]="isFormTemplatePanel ? 'text-sm font-semibold text-[#161616]' : 'text-xs font-medium text-slate-600'"
+      >Value</label>
+      <button
+        *ngIf="isFieldEditable"
+        type="button"
+        class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[#E5E7EB] bg-white text-[#6B7280] transition hover:border-[#FF9015] hover:text-[#161616] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ff9015]/30"
+        (click)="openValueModeModal()"
+        title="Configure value mode"
+        aria-label="Configure value mode"
+      >
+        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h9m-9 6h9m-9 6h9M4.5 6h.008v.008H4.5V6zm0 6h.008v.008H4.5V12zm0 6h.008v.008H4.5V18z" />
+        </svg>
+      </button>
+    </div>
     @if (!isFormTemplatePanel) {
       <p class="text-[11px] leading-relaxed text-slate-500">
         Pre-fill this field when the form is shown. With Readonly enabled, employees can see it but cannot change it.
       </p>
     }
 
+    <div
+      *ngIf="usesDynamicDefaultValue"
+      class="rounded-lg border border-dashed border-[#BDBDBD] bg-[#FAFAFA] px-3 py-2.5"
+    >
+      <p class="m-0 text-xs font-semibold text-[#161616]">Dynamic default</p>
+      <p class="m-0 mt-1 text-[12px] leading-relaxed text-[#4B5563]">
+        {{ dynamicDefaultSourceSummary || 'Dynamic source configured' }}
+      </p>
+      <button
+        *ngIf="isFieldEditable"
+        type="button"
+        class="mt-2 text-xs font-semibold text-[#0054AC] hover:underline"
+        (click)="openValueModeModal()"
+      >
+        Edit dynamic source
+      </button>
+    </div>
+
+    <ng-container *ngIf="showsStaticDefaultControls">
     <!-- Text-like -->
     <input
       *ngIf="isTextLikeValueField"
@@ -504,6 +537,7 @@
       />
       <span class="flex items-center text-sm text-slate-500">{{ field.unit || '' }}</span>
     </div>
+    </ng-container>
 
     @if (isFormTemplatePanel) {
       <p class="m-0 text-[11px] leading-snug text-[#9CA3AF]">
@@ -2917,6 +2951,647 @@
     </div>
   </div>
 </ng-template>
+
+@if (valueModeModalOpen) {
+  <div
+    class="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-[2px] max-sm:items-end max-sm:p-2"
+    (click)="closeValueModeModal()"
+  >
+    <div
+      class="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-[0_24px_48px_-16px_rgba(15,23,42,0.35)]"
+      (click)="$event.stopPropagation()"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Value mode"
+    >
+      <header class="flex items-start justify-between gap-4 border-b border-[#E5E7EB] px-6 py-5">
+        <div class="min-w-0">
+          <p class="m-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#9CA3AF]">
+            Default value
+          </p>
+          <h3 class="m-0 mt-1 text-lg font-semibold text-[#161616]">Choose how this field is pre-filled</h3>
+          <p class="m-0 mt-1.5 text-[13px] leading-relaxed text-[#6B7280]">
+            Use a fixed value, or pull the default dynamically from another field or related record property.
+          </p>
+        </div>
+        <button
+          type="button"
+          class="rounded-md p-1.5 text-[#6B7280] hover:bg-gray-100 hover:text-[#161616]"
+          (click)="closeValueModeModal()"
+          aria-label="Close"
+        >
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </header>
+
+      <div class="space-y-5 overflow-y-auto px-6 py-5">
+        <section class="space-y-2.5">
+          <h4 class="m-0 text-sm font-semibold text-[#161616]">Mode</h4>
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              class="rounded-xl border px-4 py-4 text-left transition"
+              [ngClass]="valueModeDraft === 'static'
+                ? 'border-[#FF9015] bg-[#FFF7ED] shadow-[0_0_0_3px_rgba(255,144,21,0.12)]'
+                : 'border-[#E5E7EB] bg-white text-[#161616] hover:border-[#D1D5DB] hover:bg-[#FAFAFA]'"
+              (click)="selectValueModeDraft('static')"
+            >
+              <span class="flex items-start gap-3">
+                <span
+                  class="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                  [ngClass]="valueModeDraft === 'static' ? 'bg-[#FF9015] text-white' : 'bg-[#F3F4F6] text-[#6B7280]'"
+                >
+                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+                  </svg>
+                </span>
+                <span class="min-w-0">
+                  <span class="block text-sm font-semibold text-[#161616]">Static</span>
+                  <span class="mt-1 block text-[12px] leading-relaxed text-[#6B7280]">
+                    Enter a fixed default that is applied when the form opens.
+                  </span>
+                </span>
+              </span>
+            </button>
+            <button
+              type="button"
+              class="rounded-xl border px-4 py-4 text-left transition disabled:cursor-not-allowed disabled:opacity-40"
+              [disabled]="!supportsDynamicDefaultValue"
+              [ngClass]="valueModeDraft === 'dynamic'
+                ? 'border-[#FF9015] bg-[#FFF7ED] shadow-[0_0_0_3px_rgba(255,144,21,0.12)]'
+                : 'border-[#E5E7EB] bg-white text-[#161616] hover:border-[#D1D5DB] hover:bg-[#FAFAFA]'"
+              (click)="selectValueModeDraft('dynamic')"
+            >
+              <span class="flex items-start gap-3">
+                <span
+                  class="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                  [ngClass]="valueModeDraft === 'dynamic' ? 'bg-[#FF9015] text-white' : 'bg-[#F3F4F6] text-[#6B7280]'"
+                >
+                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+                  </svg>
+                </span>
+                <span class="min-w-0">
+                  <span class="block text-sm font-semibold text-[#161616]">Dynamic</span>
+                  <span class="mt-1 block text-[12px] leading-relaxed text-[#6B7280]">
+                    {{ supportsDynamicDefaultValue
+                      ? 'Copy from another field, related record property, or calculation.'
+                      : 'Not supported for this field type.' }}
+                  </span>
+                </span>
+              </span>
+            </button>
+          </div>
+        </section>
+
+        @if (valueModeDraft === 'dynamic' && supportsDynamicDefaultValue) {
+          <section class="space-y-4 rounded-xl border border-[#E5E7EB] bg-[#FAFAFA] px-4 py-4 sm:px-5 sm:py-5">
+            <div>
+              <h4 class="m-0 text-sm font-semibold text-[#161616]">Dynamic source</h4>
+              <p class="m-0 mt-1 text-[12px] leading-relaxed text-[#6B7280]">
+                Only compatible sources for this field are listed. Dynamic record dropdowns expose their properties under Related Data.
+              </p>
+            </div>
+            <div>
+              <label class="mb-1.5 block text-xs font-medium text-gray-600">Set value from</label>
+              <div
+                class="relative w-full"
+                appDropdownPanel
+                #defaultValueSourceKindDropdown="dropdownPanel"
+                dropdownId="default-value-source-kind"
+                dropdownGroup="default-value-modal"
+              >
+                <button
+                  type="button"
+                  class="flex w-full cursor-pointer items-center justify-between gap-2 rounded-xl border border-[#BDBDBD] bg-white px-[0.85rem] py-[0.7rem] text-left text-sm font-medium"
+                  (click)="defaultValueSourceKindDropdown.toggle($event)"
+                  [attr.aria-expanded]="defaultValueSourceKindDropdown.isOpen"
+                >
+                  <span class="truncate">
+                    {{ selectOptionLabel(dynamicDefaultValueSourceKinds, defaultValueSourceKind) }}
+                  </span>
+                  <svg class="h-4 w-4 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                  </svg>
+                </button>
+                @if (defaultValueSourceKindDropdown.isOpen) {
+                  <div class="absolute left-0 right-0 top-[calc(100%+4px)] z-[200] max-h-64 overflow-y-auto rounded-[0.85rem] border border-[#BDBDBD] bg-white p-[0.35rem] shadow-lg">
+                    @for (kind of dynamicDefaultValueSourceKinds; track kind.value) {
+                      <button
+                        type="button"
+                        class="condition-dropdown-option block w-full rounded-lg px-3 py-[0.55rem] text-left text-sm text-gray-700"
+                        [class.bg-[#f7fee7]]="defaultValueSourceKind === kind.value"
+                        [class.font-semibold]="defaultValueSourceKind === kind.value"
+                        (click)="onDefaultValueSourceKindChange(kind.value)"
+                      >
+                        {{ kind.label }}
+                      </button>
+                    }
+                  </div>
+                }
+              </div>
+            </div>
+
+            @if (defaultValueSourceKind === 'field') {
+              <div>
+                <label class="mb-1.5 block text-xs font-medium text-gray-600">Field</label>
+                <div
+                  class="relative w-full"
+                  appDropdownPanel
+                  #defaultValueFieldDropdown="dropdownPanel"
+                  dropdownId="default-value-field"
+                  dropdownGroup="default-value-modal"
+                >
+                  <button
+                    type="button"
+                    class="flex w-full cursor-pointer items-center justify-between gap-2 rounded-xl border border-[#BDBDBD] bg-white px-[0.85rem] py-[0.7rem] text-left text-sm font-medium"
+                    (click)="defaultValueFieldDropdown.toggle($event)"
+                  >
+                    <span class="truncate" [class.text-slate-400]="!defaultValueFieldId">
+                      {{ selectFieldLabel(defaultValueFormFields, defaultValueFieldId) || 'Select a field' }}
+                    </span>
+                    <svg class="h-4 w-4 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </button>
+                  @if (defaultValueFieldDropdown.isOpen) {
+                    <div class="absolute left-0 right-0 top-[calc(100%+4px)] z-[200] max-h-64 overflow-y-auto rounded-[0.85rem] border border-[#BDBDBD] bg-white p-[0.35rem] shadow-lg">
+                      @if (!defaultValueFormFields.length) {
+                        <p class="m-0 px-3 py-2 text-xs text-[#9CA3AF]">No compatible fields available.</p>
+                      }
+                      @for (source of defaultValueFormFields; track source.id) {
+                        <button
+                          type="button"
+                          class="condition-dropdown-option block w-full rounded-lg px-3 py-[0.55rem] text-left text-sm"
+                          [class.bg-[#f7fee7]]="defaultValueFieldId === source.id"
+                          (click)="onDefaultValueFieldChange(source.id)"
+                        >
+                          {{ source.label }}
+                        </button>
+                      }
+                    </div>
+                  }
+                </div>
+                @if (!defaultValueFormFields.length) {
+                  <p class="m-0 mt-1.5 text-[11px] text-[#9CA3AF]">No compatible fields available.</p>
+                }
+              </div>
+            }
+
+            @if (defaultValueSourceKind === 'relatedData') {
+              <div class="space-y-4">
+                <div>
+                  <label class="mb-1.5 block text-xs font-medium text-gray-600">Source</label>
+                  <div
+                    class="relative w-full"
+                    appDropdownPanel
+                    #defaultValueRelatedSourceDropdown="dropdownPanel"
+                    dropdownId="default-value-related-source"
+                    dropdownGroup="default-value-modal"
+                  >
+                    <button
+                      type="button"
+                      class="flex w-full cursor-pointer items-center justify-between gap-2 rounded-xl border border-[#BDBDBD] bg-white px-[0.85rem] py-[0.7rem] text-left text-sm font-medium"
+                      (click)="defaultValueRelatedSourceDropdown.toggle($event)"
+                    >
+                      <span class="truncate" [class.text-slate-400]="!defaultValueRelatedSourceFieldId">
+                        {{ selectFieldLabel(dynamicConditionSourceFields, defaultValueRelatedSourceFieldId) || 'Select source' }}
+                      </span>
+                      <svg class="h-4 w-4 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                      </svg>
+                    </button>
+                    @if (defaultValueRelatedSourceDropdown.isOpen) {
+                      <div class="absolute left-0 right-0 top-[calc(100%+4px)] z-[200] max-h-64 overflow-y-auto rounded-[0.85rem] border border-[#BDBDBD] bg-white p-[0.35rem] shadow-lg">
+                        @if (!dynamicConditionSourceFields.length) {
+                          <p class="m-0 px-3 py-2 text-xs text-[#9CA3AF]">No compatible fields available.</p>
+                        }
+                        @for (source of dynamicConditionSourceFields; track source.id) {
+                          <button
+                            type="button"
+                            class="condition-dropdown-option block w-full rounded-lg px-3 py-[0.55rem] text-left text-sm"
+                            [class.bg-[#f7fee7]]="defaultValueRelatedSourceFieldId === source.id"
+                            (click)="onDefaultValueRelatedSourceChange(source.id)"
+                          >
+                            {{ source.label }}
+                          </button>
+                        }
+                      </div>
+                    }
+                  </div>
+                  @if (!dynamicConditionSourceFields.length) {
+                    <p class="m-0 mt-1.5 text-[11px] text-[#9CA3AF]">
+                      Add a dynamic Select field (for example Users) to use related data.
+                    </p>
+                  }
+                </div>
+                <div>
+                  <label class="mb-1.5 block text-xs font-medium text-gray-600">Property</label>
+                  @if (!defaultValueRelatedSourceFieldId) {
+                    <p class="m-0 rounded-xl border border-dashed border-[#E5E7EB] bg-white px-3 py-2.5 text-[12px] text-[#9CA3AF]">
+                      Select a source field to view its available properties.
+                    </p>
+                  } @else {
+                    <div
+                      class="relative w-full"
+                      appDropdownPanel
+                      #defaultValueRelatedPropertyDropdown="dropdownPanel"
+                      dropdownId="default-value-related-property"
+                      dropdownGroup="default-value-modal"
+                    >
+                      <button
+                        type="button"
+                        class="flex w-full cursor-pointer items-center justify-between gap-2 rounded-xl border border-[#BDBDBD] bg-white px-[0.85rem] py-[0.7rem] text-left text-sm font-medium disabled:opacity-50"
+                        (click)="defaultValueRelatedPropertyDropdown.toggle($event)"
+                      >
+                        <span class="truncate" [class.text-slate-400]="!defaultValueRelatedProperty">
+                          {{ selectColumnLabel(defaultValueRelatedProperties(defaultValueRelatedSourceFieldId), defaultValueRelatedProperty) || 'Select property' }}
+                        </span>
+                        <svg class="h-4 w-4 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                        </svg>
+                      </button>
+                      @if (defaultValueRelatedPropertyDropdown.isOpen) {
+                        <div class="absolute left-0 right-0 top-[calc(100%+4px)] z-[200] max-h-64 overflow-y-auto rounded-[0.85rem] border border-[#BDBDBD] bg-white p-[0.35rem] shadow-lg">
+                          @if (isRelatedPropertiesLoading(defaultValueRelatedSourceFieldId)) {
+                            <p class="m-0 px-3 py-2 text-xs text-[#9CA3AF]">Loading related properties...</p>
+                          } @else if (!defaultValueRelatedProperties(defaultValueRelatedSourceFieldId).length) {
+                            <p class="m-0 px-3 py-2 text-xs text-[#9CA3AF]">No compatible properties available.</p>
+                          }
+                          @for (column of defaultValueRelatedProperties(defaultValueRelatedSourceFieldId); track column.id) {
+                            <button
+                              type="button"
+                              class="condition-dropdown-option block w-full rounded-lg px-3 py-[0.55rem] text-left text-sm"
+                              [class.bg-[#f7fee7]]="defaultValueRelatedProperty === column.id"
+                              (click)="onDefaultValueRelatedPropertyChange(column.id)"
+                            >
+                              {{ column.label }}
+                            </button>
+                          }
+                        </div>
+                      }
+                    </div>
+                    @if (isRelatedPropertiesLoading(defaultValueRelatedSourceFieldId)) {
+                      <p class="m-0 mt-1.5 text-[11px] text-[#9CA3AF]">Loading related properties...</p>
+                    } @else if (!defaultValueRelatedProperties(defaultValueRelatedSourceFieldId).length) {
+                      <p class="m-0 mt-1.5 text-[11px] text-[#9CA3AF]">No compatible properties available.</p>
+                    }
+                  }
+                </div>
+              </div>
+            }
+
+            @if (defaultValueSourceKind === 'expression') {
+              <div class="space-y-3">
+                <div class="space-y-2 rounded-lg border border-[#BDBDBD] bg-white px-3 py-3">
+                  <p class="m-0 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Left</p>
+                  <div
+                    class="relative w-full"
+                    appDropdownPanel
+                    #defaultExprLeftKindDropdown="dropdownPanel"
+                    dropdownId="default-expr-left-kind"
+                    dropdownGroup="default-value-modal"
+                  >
+                    <button
+                      type="button"
+                      class="flex w-full items-center justify-between gap-2 rounded-xl border border-[#BDBDBD] bg-white px-[0.85rem] py-[0.7rem] text-left text-sm font-medium"
+                      (click)="defaultExprLeftKindDropdown.toggle($event)"
+                    >
+                      <span>{{ selectOptionLabel(operandSourceKinds('left'), defaultValueExpressionLeftKind) }}</span>
+                      <svg class="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                      </svg>
+                    </button>
+                    @if (defaultExprLeftKindDropdown.isOpen) {
+                      <div class="absolute left-0 right-0 top-[calc(100%+4px)] z-[200] overflow-y-auto rounded-[0.85rem] border border-[#BDBDBD] bg-white p-[0.35rem] shadow-lg">
+                        @for (kind of operandSourceKinds('left'); track kind.value) {
+                          <button
+                            type="button"
+                            class="condition-dropdown-option block w-full rounded-lg px-3 py-[0.55rem] text-left text-sm"
+                            (click)="onDefaultValueExpressionSideKindChange('left', kind.value)"
+                          >
+                            {{ kind.label }}
+                          </button>
+                        }
+                      </div>
+                    }
+                  </div>
+                  @if (defaultValueExpressionLeftKind === 'fixed') {
+                    <input
+                      type="text"
+                      class="w-full rounded-lg border border-[#BDBDBD] px-3 py-2.5 text-sm"
+                      [ngModel]="defaultValueExpressionLeftFixedValue"
+                      (ngModelChange)="onDefaultValueExpressionSideFixedChange('left', $event)"
+                      placeholder="Enter a value"
+                    />
+                  }
+                  @if (defaultValueExpressionLeftKind === 'field') {
+                    <div
+                      class="relative w-full"
+                      appDropdownPanel
+                      #defaultExprLeftFieldDropdown="dropdownPanel"
+                      dropdownId="default-expr-left-field"
+                      dropdownGroup="default-value-modal"
+                    >
+                      <button
+                        type="button"
+                        class="flex w-full items-center justify-between gap-2 rounded-xl border border-[#BDBDBD] bg-white px-[0.85rem] py-[0.7rem] text-left text-sm"
+                        (click)="defaultExprLeftFieldDropdown.toggle($event)"
+                      >
+                        <span [class.text-slate-400]="!defaultValueExpressionLeftFieldId">
+                          {{ selectFieldLabel(defaultValueFormFields, defaultValueExpressionLeftFieldId) || 'Select a field' }}
+                        </span>
+                      </button>
+                      @if (defaultExprLeftFieldDropdown.isOpen) {
+                        <div class="absolute left-0 right-0 top-[calc(100%+4px)] z-[200] max-h-48 overflow-y-auto rounded-[0.85rem] border border-[#BDBDBD] bg-white p-[0.35rem] shadow-lg">
+                          @if (!defaultValueFormFields.length) {
+                            <p class="m-0 px-3 py-2 text-xs text-[#9CA3AF]">No compatible fields available.</p>
+                          }
+                          @for (source of defaultValueFormFields; track source.id) {
+                            <button
+                              type="button"
+                              class="condition-dropdown-option block w-full rounded-lg px-3 py-[0.55rem] text-left text-sm"
+                              (click)="onDefaultValueExpressionSideFieldChange('left', source.id)"
+                            >
+                              {{ source.label }}
+                            </button>
+                          }
+                        </div>
+                      }
+                    </div>
+                  }
+                  @if (defaultValueExpressionLeftKind === 'relatedData') {
+                    <div class="space-y-2">
+                      <div
+                        class="relative w-full"
+                        appDropdownPanel
+                        #defaultExprLeftRelatedSourceDropdown="dropdownPanel"
+                        dropdownId="default-expr-left-related-source"
+                        dropdownGroup="default-value-modal"
+                      >
+                        <button
+                          type="button"
+                          class="flex w-full items-center justify-between gap-2 rounded-xl border border-[#BDBDBD] bg-white px-[0.85rem] py-[0.7rem] text-left text-sm"
+                          (click)="defaultExprLeftRelatedSourceDropdown.toggle($event)"
+                        >
+                          <span [class.text-slate-400]="!defaultValueExpressionLeftRelatedSourceFieldId">
+                            {{ selectFieldLabel(dynamicConditionSourceFields, defaultValueExpressionLeftRelatedSourceFieldId) || 'Select source' }}
+                          </span>
+                        </button>
+                        @if (defaultExprLeftRelatedSourceDropdown.isOpen) {
+                          <div class="absolute left-0 right-0 top-[calc(100%+4px)] z-[200] max-h-48 overflow-y-auto rounded-[0.85rem] border border-[#BDBDBD] bg-white p-[0.35rem] shadow-lg">
+                            @for (source of dynamicConditionSourceFields; track source.id) {
+                              <button
+                                type="button"
+                                class="condition-dropdown-option block w-full rounded-lg px-3 py-[0.55rem] text-left text-sm"
+                                (click)="onDefaultValueExpressionSideRelatedSourceChange('left', source.id)"
+                              >
+                                {{ source.label }}
+                              </button>
+                            }
+                          </div>
+                        }
+                      </div>
+                      <div
+                        class="relative w-full"
+                        appDropdownPanel
+                        #defaultExprLeftRelatedPropertyDropdown="dropdownPanel"
+                        dropdownId="default-expr-left-related-property"
+                        dropdownGroup="default-value-modal"
+                      >
+                        <button
+                          type="button"
+                          class="flex w-full items-center justify-between gap-2 rounded-xl border border-[#BDBDBD] bg-white px-[0.85rem] py-[0.7rem] text-left text-sm"
+                          [disabled]="!defaultValueExpressionLeftRelatedSourceFieldId"
+                          (click)="defaultExprLeftRelatedPropertyDropdown.toggle($event)"
+                        >
+                          <span [class.text-slate-400]="!defaultValueExpressionLeftRelatedProperty">
+                            {{ selectColumnLabel(defaultValueRelatedProperties(defaultValueExpressionLeftRelatedSourceFieldId), defaultValueExpressionLeftRelatedProperty) || 'Select property' }}
+                          </span>
+                        </button>
+                        @if (defaultExprLeftRelatedPropertyDropdown.isOpen) {
+                          <div class="absolute left-0 right-0 top-[calc(100%+4px)] z-[200] max-h-48 overflow-y-auto rounded-[0.85rem] border border-[#BDBDBD] bg-white p-[0.35rem] shadow-lg">
+                            @if (!defaultValueRelatedProperties(defaultValueExpressionLeftRelatedSourceFieldId).length) {
+                              <p class="m-0 px-3 py-2 text-xs text-[#9CA3AF]">No compatible properties available.</p>
+                            }
+                            @for (column of defaultValueRelatedProperties(defaultValueExpressionLeftRelatedSourceFieldId); track column.id) {
+                              <button
+                                type="button"
+                                class="condition-dropdown-option block w-full rounded-lg px-3 py-[0.55rem] text-left text-sm"
+                                (click)="onDefaultValueExpressionSideRelatedPropertyChange('left', column.id)"
+                              >
+                                {{ column.label }}
+                              </button>
+                            }
+                          </div>
+                        }
+                      </div>
+                    </div>
+                  }
+                </div>
+
+                <div>
+                  <label class="mb-1.5 block text-xs font-medium text-gray-600">Operator</label>
+                  <div
+                    class="relative w-full"
+                    appDropdownPanel
+                    #defaultExprOpDropdown="dropdownPanel"
+                    dropdownId="default-expr-op"
+                    dropdownGroup="default-value-modal"
+                  >
+                    <button
+                      type="button"
+                      class="flex w-full items-center justify-between gap-2 rounded-xl border border-[#BDBDBD] bg-white px-[0.85rem] py-[0.7rem] text-left text-sm font-medium"
+                      (click)="defaultExprOpDropdown.toggle($event)"
+                    >
+                      <span>{{ selectOptionLabel(expressionOps, defaultValueExpressionOp) }}</span>
+                    </button>
+                    @if (defaultExprOpDropdown.isOpen) {
+                      <div class="absolute left-0 right-0 top-[calc(100%+4px)] z-[200] overflow-y-auto rounded-[0.85rem] border border-[#BDBDBD] bg-white p-[0.35rem] shadow-lg">
+                        @for (op of expressionOps; track op.value) {
+                          <button
+                            type="button"
+                            class="condition-dropdown-option block w-full rounded-lg px-3 py-[0.55rem] text-left text-sm"
+                            (click)="onDefaultValueExpressionOpChange(op.value)"
+                          >
+                            {{ op.label }}
+                          </button>
+                        }
+                      </div>
+                    }
+                  </div>
+                </div>
+
+                <div class="space-y-2 rounded-lg border border-[#BDBDBD] bg-white px-3 py-3">
+                  <p class="m-0 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Right</p>
+                  <div
+                    class="relative w-full"
+                    appDropdownPanel
+                    #defaultExprRightKindDropdown="dropdownPanel"
+                    dropdownId="default-expr-right-kind"
+                    dropdownGroup="default-value-modal"
+                  >
+                    <button
+                      type="button"
+                      class="flex w-full items-center justify-between gap-2 rounded-xl border border-[#BDBDBD] bg-white px-[0.85rem] py-[0.7rem] text-left text-sm font-medium"
+                      (click)="defaultExprRightKindDropdown.toggle($event)"
+                    >
+                      <span>{{ selectOptionLabel(operandSourceKinds('right'), defaultValueExpressionRightKind) }}</span>
+                    </button>
+                    @if (defaultExprRightKindDropdown.isOpen) {
+                      <div class="absolute left-0 right-0 top-[calc(100%+4px)] z-[200] overflow-y-auto rounded-[0.85rem] border border-[#BDBDBD] bg-white p-[0.35rem] shadow-lg">
+                        @for (kind of operandSourceKinds('right'); track kind.value) {
+                          <button
+                            type="button"
+                            class="condition-dropdown-option block w-full rounded-lg px-3 py-[0.55rem] text-left text-sm"
+                            (click)="onDefaultValueExpressionSideKindChange('right', kind.value)"
+                          >
+                            {{ kind.label }}
+                          </button>
+                        }
+                      </div>
+                    }
+                  </div>
+                  @if (defaultValueExpressionRightKind === 'fixed') {
+                    <input
+                      type="text"
+                      class="w-full rounded-lg border border-[#BDBDBD] px-3 py-2.5 text-sm"
+                      [ngModel]="defaultValueExpressionRightFixedValue"
+                      (ngModelChange)="onDefaultValueExpressionSideFixedChange('right', $event)"
+                      placeholder="Enter a value"
+                    />
+                  }
+                  @if (defaultValueExpressionRightKind === 'field') {
+                    <div
+                      class="relative w-full"
+                      appDropdownPanel
+                      #defaultExprRightFieldDropdown="dropdownPanel"
+                      dropdownId="default-expr-right-field"
+                      dropdownGroup="default-value-modal"
+                    >
+                      <button
+                        type="button"
+                        class="flex w-full items-center justify-between gap-2 rounded-xl border border-[#BDBDBD] bg-white px-[0.85rem] py-[0.7rem] text-left text-sm"
+                        (click)="defaultExprRightFieldDropdown.toggle($event)"
+                      >
+                        <span [class.text-slate-400]="!defaultValueExpressionRightFieldId">
+                          {{ selectFieldLabel(defaultValueFormFields, defaultValueExpressionRightFieldId) || 'Select a field' }}
+                        </span>
+                      </button>
+                      @if (defaultExprRightFieldDropdown.isOpen) {
+                        <div class="absolute left-0 right-0 top-[calc(100%+4px)] z-[200] max-h-48 overflow-y-auto rounded-[0.85rem] border border-[#BDBDBD] bg-white p-[0.35rem] shadow-lg">
+                          @if (!defaultValueFormFields.length) {
+                            <p class="m-0 px-3 py-2 text-xs text-[#9CA3AF]">No compatible fields available.</p>
+                          }
+                          @for (source of defaultValueFormFields; track source.id) {
+                            <button
+                              type="button"
+                              class="condition-dropdown-option block w-full rounded-lg px-3 py-[0.55rem] text-left text-sm"
+                              (click)="onDefaultValueExpressionSideFieldChange('right', source.id)"
+                            >
+                              {{ source.label }}
+                            </button>
+                          }
+                        </div>
+                      }
+                    </div>
+                  }
+                  @if (defaultValueExpressionRightKind === 'relatedData') {
+                    <div class="space-y-2">
+                      <div
+                        class="relative w-full"
+                        appDropdownPanel
+                        #defaultExprRightRelatedSourceDropdown="dropdownPanel"
+                        dropdownId="default-expr-right-related-source"
+                        dropdownGroup="default-value-modal"
+                      >
+                        <button
+                          type="button"
+                          class="flex w-full items-center justify-between gap-2 rounded-xl border border-[#BDBDBD] bg-white px-[0.85rem] py-[0.7rem] text-left text-sm"
+                          (click)="defaultExprRightRelatedSourceDropdown.toggle($event)"
+                        >
+                          <span [class.text-slate-400]="!defaultValueExpressionRightRelatedSourceFieldId">
+                            {{ selectFieldLabel(dynamicConditionSourceFields, defaultValueExpressionRightRelatedSourceFieldId) || 'Select source' }}
+                          </span>
+                        </button>
+                        @if (defaultExprRightRelatedSourceDropdown.isOpen) {
+                          <div class="absolute left-0 right-0 top-[calc(100%+4px)] z-[200] max-h-48 overflow-y-auto rounded-[0.85rem] border border-[#BDBDBD] bg-white p-[0.35rem] shadow-lg">
+                            @for (source of dynamicConditionSourceFields; track source.id) {
+                              <button
+                                type="button"
+                                class="condition-dropdown-option block w-full rounded-lg px-3 py-[0.55rem] text-left text-sm"
+                                (click)="onDefaultValueExpressionSideRelatedSourceChange('right', source.id)"
+                              >
+                                {{ source.label }}
+                              </button>
+                            }
+                          </div>
+                        }
+                      </div>
+                      <div
+                        class="relative w-full"
+                        appDropdownPanel
+                        #defaultExprRightRelatedPropertyDropdown="dropdownPanel"
+                        dropdownId="default-expr-right-related-property"
+                        dropdownGroup="default-value-modal"
+                      >
+                        <button
+                          type="button"
+                          class="flex w-full items-center justify-between gap-2 rounded-xl border border-[#BDBDBD] bg-white px-[0.85rem] py-[0.7rem] text-left text-sm"
+                          [disabled]="!defaultValueExpressionRightRelatedSourceFieldId"
+                          (click)="defaultExprRightRelatedPropertyDropdown.toggle($event)"
+                        >
+                          <span [class.text-slate-400]="!defaultValueExpressionRightRelatedProperty">
+                            {{ selectColumnLabel(defaultValueRelatedProperties(defaultValueExpressionRightRelatedSourceFieldId), defaultValueExpressionRightRelatedProperty) || 'Select property' }}
+                          </span>
+                        </button>
+                        @if (defaultExprRightRelatedPropertyDropdown.isOpen) {
+                          <div class="absolute left-0 right-0 top-[calc(100%+4px)] z-[200] max-h-48 overflow-y-auto rounded-[0.85rem] border border-[#BDBDBD] bg-white p-[0.35rem] shadow-lg">
+                            @if (!defaultValueRelatedProperties(defaultValueExpressionRightRelatedSourceFieldId).length) {
+                              <p class="m-0 px-3 py-2 text-xs text-[#9CA3AF]">No compatible properties available.</p>
+                            }
+                            @for (column of defaultValueRelatedProperties(defaultValueExpressionRightRelatedSourceFieldId); track column.id) {
+                              <button
+                                type="button"
+                                class="condition-dropdown-option block w-full rounded-lg px-3 py-[0.55rem] text-left text-sm"
+                                (click)="onDefaultValueExpressionSideRelatedPropertyChange('right', column.id)"
+                              >
+                                {{ column.label }}
+                              </button>
+                            }
+                          </div>
+                        }
+                      </div>
+                    </div>
+                  }
+                </div>
+              </div>
+            }
+          </section>
+        }
+      </div>
+
+      <footer class="flex items-center justify-end gap-2 border-t border-[#E5E7EB] px-6 py-4">
+        <button
+          type="button"
+          class="rounded-lg border border-[#BDBDBD] bg-white px-3.5 py-2 text-sm font-semibold text-[#161616] hover:bg-gray-50"
+          (click)="closeValueModeModal()"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="rounded-lg bg-[#161616] px-3.5 py-2 text-sm font-semibold text-white hover:bg-black"
+          (click)="applyValueModeModal()"
+        >
+          Apply
+        </button>
+      </footer>
+    </div>
+  </div>
+}
 
 <app-confirm-modal
   [isOpen]="isDeleteModalOpen"

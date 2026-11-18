@@ -122,6 +122,9 @@ export class DynamicFormFieldMapperService {
       label: field.label,
       value: field.value ?? resolvedDefault ?? undefined,
       defaultValue: resolvedDefault,
+      defaultValueSource: field.defaultValueSource
+        ? JSON.parse(JSON.stringify(field.defaultValueSource))
+        : null,
       required: field.required,
       placeholder: field.placeholder,
       width: field.width ?? 12,

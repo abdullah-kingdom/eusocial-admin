@@ -31,6 +31,8 @@ const MODULE_API_PATHS: Record<string, string> = {
 export interface ModuleColumnOption {
   id: string;
   label: string;
+  /** Schema field type when the column maps to a module form field. */
+  type?: string;
 }
 
 export interface ModuleDataCache {
@@ -427,6 +429,7 @@ export class DynamicModuleOptionsService {
     fields: FormField[]
   ): ModuleColumnOption[] {
     const labelByKey = this.buildSchemaColumnLabelMap(fields);
+    const typeByKey = this.buildSchemaColumnTypeMap(fields);
     const columnIds = new Set<string>();
 
     for (const field of fields) {
@@ -444,9 +447,10 @@ export class DynamicModuleOptionsService {
       return this.getFallbackColumns();
     }
 
-    const columns: ModuleColumnOption[] = Array.from(columnIds).map(id => ({
+    const columns: ModuleColumnOption[] = Array.from(columnIds).map((id) => ({
       id,
-      label: labelByKey.get(id) || this.formatColumnLabel(id),
+      label: this.resolveColumnDisplayLabel(id, labelByKey.get(id)),
+      type: typeByKey.get(id),
     }));
 
     return this.sortModuleColumns(columns);
@@ -483,24 +487,83 @@ export class DynamicModuleOptionsService {
     return labels;
   }
 
+  private buildSchemaColumnTypeMap(fields: FormField[]): Map<string, string> {
+    const types = new Map<string, string>();
+
+    for (const field of fields) {
+      const type = String(field.type ?? '').trim();
+      if (!type) {
+        continue;
+      }
+
+      const id = String(field.id ?? '').trim();
+      const name = String(field.name ?? '').trim();
+      const fieldKey = String(field.fieldKey ?? '').trim();
+      const systemMappingKey = String(field.systemMappingKey ?? '').trim();
+
+      if (id) {
+        types.set(id, type);
+      }
+      if (name) {
+        types.set(name, type);
+      }
+      if (fieldKey) {
+        types.set(fieldKey, type);
+      }
+      if (systemMappingKey) {
+        types.set(systemMappingKey, type);
+      }
+    }
+
+    return types;
+  }
+
+  private resolveColumnDisplayLabel(
+    columnId: string,
+    schemaLabel?: string | null,
+  ): string {
+    const fromSchema = String(schemaLabel ?? '').trim();
+    if (fromSchema) {
+      return fromSchema;
+    }
+    return this.formatColumnLabel(columnId);
+  }
+
+  /**
+   * Display-only column label. Never returns a raw `fld_…` technical id.
+   * Persisted property keys remain the column `id`.
+   */
   private formatColumnLabel(columnId: string): string {
     const normalized = String(columnId ?? '').trim();
 
-    if (!normalized || /^fld_/i.test(normalized)) {
-      return normalized;
+    if (!normalized) {
+      return 'Unnamed property';
     }
 
-    return normalized
-      .replace(/[_-]+/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .replace(/\b\w/g, character => character.toUpperCase());
+    if (/^fld_/i.test(normalized)) {
+      return 'Unnamed property';
+    }
+
+    return (
+      normalized
+        .replace(/[_-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/\b\w/g, (character) => character.toUpperCase())
+        .replace(/\bId\b/g, 'ID') || 'Unnamed property'
+    );
   }
 
   private getFallbackColumns(): ModuleColumnOption[] {
-    return ['id', 'name', 'title', 'email', 'phone', 'status'].map(id => ({
+    return ['id', 'name', 'title', 'email', 'phone', 'status'].map((id) => ({
       id,
       label: this.formatColumnLabel(id),
+      type:
+        id === 'email'
+          ? 'email'
+          : id === 'id'
+            ? 'text'
+            : undefined,
     }));
   }
 

@@ -1,4 +1,7 @@
-import { FieldCondition } from '../../../shared/conditional-logic';
+import {
+  FieldCondition,
+  ValueSource,
+} from '../../../shared/conditional-logic';
 import { ImageFile } from './image-file.model';
 
 export type FieldType =
@@ -81,6 +84,11 @@ export interface FormField {
 
   value?: unknown;
   defaultValue?: unknown;
+  /**
+   * Dynamic default source (Form Field / Related Data / Expression).
+   * Independent of Conditional Logic `condition` actions.
+   */
+  defaultValueSource?: ValueSource | null;
   validations?: Record<string, unknown>;
   width?: number;
   order?: number;
