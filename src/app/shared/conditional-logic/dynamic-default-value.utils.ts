@@ -429,6 +429,11 @@ export function resolveDynamicDefaultValues(
         continue;
       }
 
+      // Never erase an existing value with an empty / unresolved result.
+      if (!hasPopulatedAnswerValue(coerced)) {
+        continue;
+      }
+
       const current = options.valuesByFieldId[field.id];
       if (setValuesEqual(current, coerced)) {
         if (!appliedFieldIds.includes(field.id)) {
@@ -506,6 +511,54 @@ export function topologicalSortFieldIds(
   }
 
   return ordered;
+}
+
+/**
+ * Merge durable answer / user-edit protections with live dirty/touched ids.
+ * Used by DynamicForm runtime before every dynamic-default pass.
+ */
+export function collectDynamicDefaultSkipFieldIds(options: {
+  answerProtectedFieldIds?: Iterable<string>;
+  userEditedFieldIds?: Iterable<string>;
+  dirtyOrTouchedFieldIds?: Iterable<string>;
+}): Set<string> {
+  const skip = new Set<string>();
+  for (const id of options.answerProtectedFieldIds ?? []) {
+    if (id) {
+      skip.add(id);
+    }
+  }
+  for (const id of options.userEditedFieldIds ?? []) {
+    if (id) {
+      skip.add(id);
+    }
+  }
+  for (const id of options.dirtyOrTouchedFieldIds ?? []) {
+    if (id) {
+      skip.add(id);
+    }
+  }
+  return skip;
+}
+
+/**
+ * Whether a resolved dynamic-default candidate should be written to a control.
+ * Rejects null/empty results and no-op equal values.
+ */
+export function shouldApplyDynamicDefaultResolvedValue(
+  current: unknown,
+  next: unknown,
+): boolean {
+  if (next === undefined || next === null) {
+    return false;
+  }
+  if (!hasPopulatedAnswerValue(next)) {
+    return false;
+  }
+  if (setValuesEqual(current, next)) {
+    return false;
+  }
+  return true;
 }
 
 /** Whether a control value counts as already populated (skip dynamic default). */

@@ -1,4 +1,5 @@
 import {
+  collectDynamicDefaultSkipFieldIds,
   describeDefaultValueSource,
   filterRelatedPropertiesForDynamicDefault,
   hasPopulatedAnswerValue,
@@ -8,6 +9,7 @@ import {
   normalizeDefaultValueSource,
   resolveDynamicDefaultValues,
   resolveRelatedPropertyDisplayLabel,
+  shouldApplyDynamicDefaultResolvedValue,
   topologicalSortFieldIds,
 } from './dynamic-default-value.utils';
 import {
@@ -235,6 +237,173 @@ describe('dynamic default value utils', () => {
       });
 
       expect(valuesByFieldId['total']).toBe(12);
+    });
+
+    it('re-resolves when a source value changes later', () => {
+      const fields = [
+        {
+          id: 'target',
+          name: 'target',
+          type: 'email',
+          defaultValueSource: { kind: 'field' as const, fieldId: 'source' },
+        },
+        { id: 'source', name: 'source', type: 'email' },
+      ];
+      const valuesByFieldId: Record<string, unknown> = {
+        source: 'first@example.com',
+        target: '',
+      };
+      const fieldsById = new Map(fields.map((field) => [field.id, field]));
+      const applyValue = (field: { id: string }, value: unknown) => {
+        valuesByFieldId[field.id] = value;
+        return true;
+      };
+
+      resolveDynamicDefaultValues(fields, { valuesByFieldId, fieldsById, applyValue });
+      expect(valuesByFieldId['target']).toBe('first@example.com');
+
+      valuesByFieldId['source'] = 'second@example.com';
+      resolveDynamicDefaultValues(fields, { valuesByFieldId, fieldsById, applyValue });
+      expect(valuesByFieldId['target']).toBe('second@example.com');
+    });
+
+    it('re-resolves Related Data after records become available', () => {
+      const fields = [
+        {
+          id: 'email',
+          name: 'email',
+          type: 'email',
+          defaultValueSource: {
+            kind: 'relatedData' as const,
+            sourceFieldId: 'user',
+            property: 'email',
+          },
+        },
+        {
+          id: 'user',
+          name: 'user',
+          type: 'select',
+          optionSource: {
+            type: 'dynamic',
+            endpoint: 'users',
+            response: { valueKey: 'id', labelKey: 'name', dataPath: 'data' },
+          },
+        },
+      ];
+      const valuesByFieldId: Record<string, unknown> = {
+        user: '42',
+        email: '',
+      };
+      const fieldsById = new Map(fields.map((field) => [field.id, field]));
+      const applyValue = (field: { id: string }, value: unknown) => {
+        valuesByFieldId[field.id] = value;
+        return true;
+      };
+      const lookup = { recordsByEndpoint: new Map<string, Record<string, unknown>[]>() };
+
+      resolveDynamicDefaultValues(fields, {
+        valuesByFieldId,
+        fieldsById,
+        lookup,
+        applyValue,
+      });
+      expect(valuesByFieldId['email']).toBe('');
+
+      lookup.recordsByEndpoint.set('users', [
+        { id: '42', name: 'Ada', email: 'ada@example.com' },
+      ]);
+      resolveDynamicDefaultValues(fields, {
+        valuesByFieldId,
+        fieldsById,
+        lookup,
+        applyValue,
+      });
+      expect(valuesByFieldId['email']).toBe('ada@example.com');
+    });
+
+    it('does not apply empty results over existing values', () => {
+      const fields = [
+        {
+          id: 'target',
+          name: 'target',
+          type: 'text',
+          defaultValueSource: { kind: 'field' as const, fieldId: 'source' },
+        },
+        { id: 'source', name: 'source', type: 'text' },
+      ];
+      const valuesByFieldId: Record<string, unknown> = {
+        source: '',
+        target: 'keep-me',
+      };
+
+      resolveDynamicDefaultValues(fields, {
+        valuesByFieldId,
+        fieldsById: new Map(fields.map((field) => [field.id, field])),
+        applyValue: () => {
+          fail('empty source must not erase target');
+          return false;
+        },
+      });
+
+      expect(valuesByFieldId['target']).toBe('keep-me');
+    });
+
+    it('does not overwrite user-edited targets while still updating other dependents', () => {
+      const fields = [
+        {
+          id: 'edited',
+          name: 'edited',
+          type: 'text',
+          defaultValueSource: { kind: 'field' as const, fieldId: 'source' },
+        },
+        {
+          id: 'open',
+          name: 'open',
+          type: 'text',
+          defaultValueSource: { kind: 'field' as const, fieldId: 'source' },
+        },
+        { id: 'source', name: 'source', type: 'text' },
+      ];
+      const valuesByFieldId: Record<string, unknown> = {
+        source: 'fresh',
+        edited: 'user-typed',
+        open: '',
+      };
+
+      resolveDynamicDefaultValues(fields, {
+        skipFieldIds: collectDynamicDefaultSkipFieldIds({
+          userEditedFieldIds: ['edited'],
+        }),
+        valuesByFieldId,
+        fieldsById: new Map(fields.map((field) => [field.id, field])),
+        applyValue: (field, value) => {
+          valuesByFieldId[field.id] = value;
+          return true;
+        },
+      });
+
+      expect(valuesByFieldId['edited']).toBe('user-typed');
+      expect(valuesByFieldId['open']).toBe('fresh');
+    });
+  });
+
+  describe('skip / apply helpers', () => {
+    it('merges answer, user-edited, and dirty skip ids', () => {
+      const skip = collectDynamicDefaultSkipFieldIds({
+        answerProtectedFieldIds: ['a'],
+        userEditedFieldIds: ['b'],
+        dirtyOrTouchedFieldIds: ['c', 'a'],
+      });
+      expect(skip.has('a')).toBeTrue();
+      expect(skip.has('b')).toBeTrue();
+      expect(skip.has('c')).toBeTrue();
+    });
+
+    it('rejects empty and equal resolved values', () => {
+      expect(shouldApplyDynamicDefaultResolvedValue('', 'x')).toBeTrue();
+      expect(shouldApplyDynamicDefaultResolvedValue('x', 'x')).toBeFalse();
+      expect(shouldApplyDynamicDefaultResolvedValue('x', '')).toBeFalse();
+      expect(shouldApplyDynamicDefaultResolvedValue('x', null)).toBeFalse();
     });
   });
 
