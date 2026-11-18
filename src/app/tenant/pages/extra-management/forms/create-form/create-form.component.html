@@ -1286,13 +1286,13 @@
                         {{ assignUsersDisabled() ? 'Clear job positions to select users' : 'Search users...' }}
                       </span>
                     }
-                    @for (user of meta().assignUsers; track user) {
+                    @for (userId of meta().assignUsers; track userId) {
                       <span class="inline-flex items-center gap-1 bg-[#fff5eb] border border-[#ffd9b3] rounded px-1.5 py-0.5 text-xs font-medium text-[#c57a10]">
-                        {{ user }}
+                        {{ userOptionLabel(userId) }}
                         <button
                           type="button"
                           class="ml-0.5 text-[#c57a10] hover:text-[#a3650d] font-semibold leading-none pointer-events-auto"
-                          (click)="$event.stopPropagation(); removeMultiSelectOption('assignUsers', user)"
+                          (click)="$event.stopPropagation(); removeMultiSelectOption('assignUsers', userId)"
                         >×</button>
                       </span>
                     }
@@ -1320,7 +1320,7 @@
                             type="button"
                             class="w-full text-left px-4 py-2 text-sm font-ibm flex items-center gap-2 cursor-pointer"
                             [class]="opt.selected ? 'bg-[#fff5eb] text-[#c57a10]' : 'hover:bg-[#c57a10] hover:text-white text-[#525252]'"
-                            (click)="toggleMultiSelectOption('assignUsers', opt.name)"
+                            (click)="toggleMultiSelectOption('assignUsers', opt.id)"
                           >
                             @if (opt.selected) {
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" class="text-[#c57a10] shrink-0">
@@ -1369,13 +1369,13 @@
                         {{ assignPositionsDisabled() ? 'Clear users to select job positions' : 'Search job positions...' }}
                       </span>
                     }
-                    @for (pos of meta().assignJobPosition; track pos) {
+                    @for (positionId of meta().assignJobPosition; track positionId) {
                       <span class="inline-flex items-center gap-1 bg-[#fff5eb] border border-[#ffd9b3] rounded px-1.5 py-0.5 text-xs font-medium text-[#c57a10]">
-                        {{ pos }}
+                        {{ jobPositionOptionLabel(positionId) }}
                         <button
                           type="button"
                           class="ml-0.5 text-[#c57a10] hover:text-[#a3650d] font-semibold leading-none pointer-events-auto"
-                          (click)="$event.stopPropagation(); removeMultiSelectOption('assignJobPosition', pos)"
+                          (click)="$event.stopPropagation(); removeMultiSelectOption('assignJobPosition', positionId)"
                         >×</button>
                       </span>
                     }
@@ -1403,7 +1403,7 @@
                             type="button"
                             class="w-full text-left px-4 py-2 text-sm font-ibm flex items-center gap-2 cursor-pointer"
                             [class]="opt.selected ? 'bg-[#fff5eb] text-[#c57a10]' : 'hover:bg-[#c57a10] hover:text-white text-[#525252]'"
-                            (click)="toggleMultiSelectOption('assignJobPosition', opt.name)"
+                            (click)="toggleMultiSelectOption('assignJobPosition', opt.id)"
                           >
                             @if (opt.selected) {
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" class="text-[#c57a10] shrink-0">
@@ -1464,13 +1464,13 @@
                         {{ reportUsersDisabled() ? 'Clear job positions to select users' : 'Search users...' }}
                       </span>
                     }
-                    @for (user of meta().reportUsers; track user) {
+                    @for (userId of meta().reportUsers; track userId) {
                       <span class="inline-flex items-center gap-1 bg-[#ecfdf5] border border-[#a7f3d0] rounded px-1.5 py-0.5 text-xs font-medium text-[#047857]">
-                        {{ user }}
+                        {{ userOptionLabel(userId) }}
                         <button
                           type="button"
                           class="ml-0.5 text-[#047857] hover:text-[#065f46] font-semibold leading-none pointer-events-auto"
-                          (click)="$event.stopPropagation(); removeMultiSelectOption('reportUsers', user)"
+                          (click)="$event.stopPropagation(); removeMultiSelectOption('reportUsers', userId)"
                         >×</button>
                       </span>
                     }
@@ -1498,7 +1498,7 @@
                             type="button"
                             class="w-full text-left px-4 py-2 text-sm font-ibm flex items-center gap-2 cursor-pointer"
                             [class]="opt.selected ? 'bg-[#ecfdf5] text-[#047857]' : 'hover:bg-[#047857] hover:text-white text-[#525252]'"
-                            (click)="toggleMultiSelectOption('reportUsers', opt.name)"
+                            (click)="toggleMultiSelectOption('reportUsers', opt.id)"
                           >
                             @if (opt.selected) {
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" class="text-[#047857] shrink-0">
@@ -1547,13 +1547,13 @@
                         {{ reportPositionsDisabled() ? 'Clear users to select job positions' : 'Search job positions...' }}
                       </span>
                     }
-                    @for (pos of meta().reportJobPosition; track pos) {
+                    @for (positionId of meta().reportJobPosition; track positionId) {
                       <span class="inline-flex items-center gap-1 bg-[#ecfdf5] border border-[#a7f3d0] rounded px-1.5 py-0.5 text-xs font-medium text-[#047857]">
-                        {{ pos }}
+                        {{ jobPositionOptionLabel(positionId) }}
                         <button
                           type="button"
                           class="ml-0.5 text-[#047857] hover:text-[#065f46] font-semibold leading-none pointer-events-auto"
-                          (click)="$event.stopPropagation(); removeMultiSelectOption('reportJobPosition', pos)"
+                          (click)="$event.stopPropagation(); removeMultiSelectOption('reportJobPosition', positionId)"
                         >×</button>
                       </span>
                     }
@@ -1581,7 +1581,7 @@
                             type="button"
                             class="w-full text-left px-4 py-2 text-sm font-ibm flex items-center gap-2 cursor-pointer"
                             [class]="opt.selected ? 'bg-[#ecfdf5] text-[#047857]' : 'hover:bg-[#047857] hover:text-white text-[#525252]'"
-                            (click)="toggleMultiSelectOption('reportJobPosition', opt.name)"
+                            (click)="toggleMultiSelectOption('reportJobPosition', opt.id)"
                           >
                             @if (opt.selected) {
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" class="text-[#047857] shrink-0">
@@ -1614,7 +1614,7 @@
               <div class="relation-flow__column">
                 <span class="relation-flow__column-label font-ibm">Assigned To</span>
                 <ul class="relation-flow__chips">
-                  @for (item of assignFlowItems(); track item.kind + ':' + item.name) {
+                  @for (item of assignFlowItems(); track item.kind + ':' + item.id) {
                     <li class="relation-flow__chip relation-flow__chip--assign font-ibm">
                       <span class="relation-flow__chip-icon" aria-hidden="true">
                         @if (item.kind === 'user') {
@@ -1674,7 +1674,7 @@
               <div class="relation-flow__column">
                 <span class="relation-flow__column-label font-ibm">Reports To</span>
                 <ul class="relation-flow__chips">
-                  @for (item of reportFlowItems(); track item.kind + ':' + item.name) {
+                  @for (item of reportFlowItems(); track item.kind + ':' + item.id) {
                     <li class="relation-flow__chip relation-flow__chip--report font-ibm">
                       <span class="relation-flow__chip-icon" aria-hidden="true">
                         @if (item.kind === 'user') {
