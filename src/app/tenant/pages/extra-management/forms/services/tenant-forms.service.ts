@@ -9,7 +9,7 @@ import {
 } from '../models/dynamic-form.models';
 
 /** Template lifecycle statuses accepted by listing/search filters. */
-export type TenantFormStatusFilter = 'active' | 'draft' | 'archived';
+export type TenantFormStatusFilter = 'active' | 'draft' | 'inactive' | 'archived';
 
 /** Raw item shape from GET /api/data-collection/templates. */
 export interface TenantFormsApiItem {
@@ -36,6 +36,7 @@ export interface TenantFormsApiResponse {
     active?: number;
     drafts?: number;
     draft?: number;
+    inactive?: number;
     archived?: number;
   };
   data?: TenantFormsApiItem[];
@@ -51,6 +52,7 @@ export interface CreateTenantFormPayload {
 export interface TenantFormsStatusCounts {
   active: number;
   draft: number;
+  inactive: number;
   archived: number;
 }
 
@@ -230,6 +232,7 @@ export class TenantFormsService {
     return {
       active: Number(raw.active ?? 0) || 0,
       draft: Number(draftSource ?? 0) || 0,
+      inactive: Number(raw.inactive ?? 0) || 0,
       archived: Number(raw.archived ?? 0) || 0,
     };
   }
@@ -284,6 +287,9 @@ export class TenantFormsService {
     }
     if (raw === 'active' || raw === 'published' || raw === 'publish') {
       return 'active';
+    }
+    if (raw === 'inactive') {
+      return 'inactive';
     }
     if (raw === 'archived' || raw === 'archive') {
       return 'archived';
