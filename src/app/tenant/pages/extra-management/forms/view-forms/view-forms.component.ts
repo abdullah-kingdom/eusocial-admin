@@ -96,6 +96,7 @@ export class ViewFormsComponent implements OnInit {
   readonly statusFilters: StatusFilterOption[] = [
     { label: 'Active', value: 'active' },
     { label: 'Drafts', value: 'draft' },
+    { label: 'Inactive', value: 'inactive' },
     { label: 'Archived', value: 'archived' },
   ];
 
@@ -116,13 +117,14 @@ export class ViewFormsComponent implements OnInit {
   readonly pageSize = signal(environment.limit || 15);
   readonly pageSizeValue = computed(() => this.pageSize());
   readonly filterFields = signal<GlobalFilterField[]>([]);
-  /** API status for active/draft/archived listing requests. */
+  /** API status for active/draft/inactive/archived listing requests. */
   readonly statusFilter = signal<TenantFormStatusFilter>('active');
   /** UI tab status (mirrors API status filter). */
   readonly listingStatus = signal<ListingStatus>('active');
   readonly statusCounts = signal<Record<ListingStatus, number>>({
     active: 0,
     draft: 0,
+    inactive: 0,
     archived: 0,
   });
   readonly searchQuery = signal('');
@@ -135,6 +137,7 @@ export class ViewFormsComponent implements OnInit {
   readonly actionsMenuStyle = signal<Record<string, string>>({});
   readonly isArchivedView = computed(() => this.listingStatus() === 'archived');
   readonly isDraftView = computed(() => this.listingStatus() === 'draft');
+  readonly isInactiveView = computed(() => this.listingStatus() === 'inactive');
   readonly assignedToOptions = computed(() => {
     const positions = this.jobPositionOptions().map((item) => ({
       value: `position:${item.id}`,
@@ -194,6 +197,9 @@ export class ViewFormsComponent implements OnInit {
     if (this.isDraftView()) {
       return 'No draft forms found';
     }
+    if (this.isInactiveView()) {
+      return 'No inactive forms found';
+    }
     return this.isArchivedView() ? 'No archived forms found' : 'No forms created yet';
   });
   readonly listSummaryLabel = computed(() => {
@@ -201,6 +207,9 @@ export class ViewFormsComponent implements OnInit {
     const noun = count === 1 ? 'form' : 'forms';
     if (this.isDraftView()) {
       return `${count} draft ${noun}`;
+    }
+    if (this.isInactiveView()) {
+      return `${count} inactive ${noun}`;
     }
     return this.isArchivedView()
       ? `${count} archived ${noun}`
@@ -627,6 +636,7 @@ export class ViewFormsComponent implements OnInit {
             this.statusCounts.set({
               active: res.counts.active,
               draft: res.counts.draft,
+              inactive: res.counts.inactive,
               archived: res.counts.archived,
             });
           } else {

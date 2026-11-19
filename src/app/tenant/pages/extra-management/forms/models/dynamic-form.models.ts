@@ -824,7 +824,7 @@ export interface DynamicFormPayload {
 }
 
 /** Template lifecycle as returned by data-collection APIs (`active` = published). */
-export type FormTemplateStatus = 'active' | 'draft' | 'archived';
+export type FormTemplateStatus = 'active' | 'draft' | 'inactive' | 'archived';
 
 export interface SavedDynamicForm {
   id: string;

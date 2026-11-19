@@ -305,7 +305,15 @@ export class CreateFormComponent implements OnInit, CreateFormCanDeactivate {
    */
   readonly templateStatus = signal<FormTemplateStatus | null>(null);
   readonly isPublishedTemplate = computed(() => this.templateStatus() === 'active');
-  /** New templates and drafts use Publish + draft autosave; published uses Update only. */
+  /**
+   * Active + Inactive persist via PUT Update (not draft autosave / Publish).
+   * Backend may recalculate Active/Inactive from the updated schedule.
+   */
+  readonly usesUpdateWorkflow = computed(() => {
+    const status = this.templateStatus();
+    return status === 'active' || status === 'inactive';
+  });
+  /** New templates and drafts use Publish + draft autosave; published/inactive use Update. */
   readonly usesDraftWorkflow = computed(() => {
     const status = this.templateStatus();
     return status === null || status === 'draft';
@@ -426,6 +434,9 @@ export class CreateFormComponent implements OnInit, CreateFormCanDeactivate {
   readonly draftStatusLabel = computed(() => {
     if (this.isPublishedTemplate()) {
       return 'Editing published template';
+    }
+    if (this.templateStatus() === 'inactive') {
+      return 'Editing inactive template';
     }
     if (this.draftSaveState() === 'saving' || this.savingDraft()) {
       return 'Saving draft…';
@@ -1026,17 +1037,18 @@ export class CreateFormComponent implements OnInit, CreateFormCanDeactivate {
   }
 
   /**
-   * Published templates only: enable Update when the full template is valid.
+   * Active/Inactive templates: enable Update when the full template is valid.
+   * (Same validity gate as published Active; does not require dirty state.)
    */
   canUpdateExistingTemplate(): boolean {
     return (
-      this.isPublishedTemplate() &&
+      this.usesUpdateWorkflow() &&
       this.canSave() &&
       !this.submitting()
     );
   }
 
-  /** Published edit: persist via PUT without changing status. */
+  /** Active/Inactive edit: persist via PUT; backend owns status transitions. */
   updateExistingTemplate(): void {
     if (!this.canUpdateExistingTemplate()) {
       return;
@@ -1178,9 +1190,9 @@ export class CreateFormComponent implements OnInit, CreateFormCanDeactivate {
     this.router.navigate(['/dynamic-forms']);
   }
 
-  /** Published leave modal: persist via Update then navigate away. */
+  /** Active/Inactive leave modal: persist via Update then navigate away. */
   onUnsavedSavePublished(): void {
-    if (!this.isPublishedTemplate() || !this.canSave() || this.submitting()) {
+    if (!this.usesUpdateWorkflow() || !this.canSave() || this.submitting()) {
       return;
     }
     this.savePublishedTemplate({ leaveAfter: true, resolveNavigation: true });
@@ -4473,8 +4485,9 @@ export class CreateFormComponent implements OnInit, CreateFormCanDeactivate {
   }
 
   /**
-   * Update an already-published template via PUT. Does not touch draft APIs
-   * and does not change lifecycle status client-side.
+   * Update an Active/Inactive template via PUT. Does not touch draft APIs.
+   * Lifecycle status after save follows the API response (backend may
+   * reactivate when the schedule is no longer elapsed).
    */
   savePublishedTemplate(options?: {
     leaveAfter?: boolean;
@@ -4483,7 +4496,7 @@ export class CreateFormComponent implements OnInit, CreateFormCanDeactivate {
     if (this.submitting() || !this.canSave()) {
       return;
     }
-    if (!this.isPublishedTemplate()) {
+    if (!this.usesUpdateWorkflow()) {
       return;
     }
 
@@ -4503,7 +4516,20 @@ export class CreateFormComponent implements OnInit, CreateFormCanDeactivate {
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
-        next: () => {
+        next: (res) => {
+          const rawData =
+            res && typeof res === 'object' && !Array.isArray(res) ? res.data : undefined;
+          const data =
+            rawData && typeof rawData === 'object' && !Array.isArray(rawData)
+              ? (rawData as { status?: string; isActive?: boolean })
+              : null;
+          const nextStatus = this.formsService.normalizeLifecycleStatus(
+            data?.status,
+            data?.isActive,
+          );
+          if (nextStatus) {
+            this.templateStatus.set(nextStatus);
+          }
           this.toastr.success('Form updated successfully');
           this.freezeBaseline = false;
           this.markBaseline();

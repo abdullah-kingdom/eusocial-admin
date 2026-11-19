@@ -95,7 +95,7 @@
           [class.text-[#161616]]="canUpdateExistingTemplate()"
           [class.hover:bg-[#c5d700]]="canUpdateExistingTemplate()"
           [disabled]="!canUpdateExistingTemplate()"
-          title="Save changes to this published template"
+          title="Save changes to this template"
           (click)="updateExistingTemplate()"
         >
           @if (submitting()) {
@@ -1064,8 +1064,8 @@
             Unsaved Changes
           </h4>
           <p class="mt-3 text-sm leading-6 text-[#6B7280]">
-            @if (isPublishedTemplate()) {
-              You have unsaved changes to this published template. Save them before leaving?
+            @if (usesUpdateWorkflow()) {
+              You have unsaved changes to this template. Save them before leaving?
             } @else {
               You have unsaved changes. Save them as a draft before leaving?
             }
@@ -1087,7 +1087,7 @@
             >
               Discard Changes
             </button>
-            @if (isPublishedTemplate()) {
+            @if (usesUpdateWorkflow()) {
               <button
                 type="button"
                 class="rounded-lg bg-[#d4e600] px-4 py-2.5 text-sm font-bold text-[#161616] transition hover:bg-[#c5d700] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d4e600]/50 disabled:cursor-not-allowed disabled:opacity-50"
