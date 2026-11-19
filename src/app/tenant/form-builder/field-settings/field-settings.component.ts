@@ -983,6 +983,8 @@ export class FieldSettingsComponent implements OnDestroy {
   valueModeDraft: 'static' | 'dynamic' = 'static';
   /** Draft dynamic source edited inside the modal before Apply. */
   valueModeDraftSource: ValueSource | null = null;
+  /** Draft static default edited inside the modal before Apply. */
+  valueModeDraftStaticValue: unknown = '';
 
   get supportsDynamicDefaultValue(): boolean {
     return !!this._field && supportsSetValueFieldType(this._field.type);
@@ -992,8 +994,50 @@ export class FieldSettingsComponent implements OnDestroy {
     return isDynamicDefaultValueSource(this._field?.defaultValueSource);
   }
 
+  /** Static inputs render inside the Value modal while Static mode is selected. */
   get showsStaticDefaultControls(): boolean {
-    return this.supportsConfiguredValue && !this.usesDynamicDefaultValue;
+    return (
+      this.valueModeModalOpen &&
+      this.valueModeDraft === 'static' &&
+      this.supportsConfiguredValue
+    );
+  }
+
+  /** True when a non-empty static default is saved on the field. */
+  get hasConfiguredStaticDefault(): boolean {
+    if (!this.supportsConfiguredValue || this.usesDynamicDefaultValue) {
+      return false;
+    }
+    return !this.isConfiguredDefaultEmpty(this._field?.defaultValue);
+  }
+
+  /** Compact summary shown under Set Default Value for a saved static default. */
+  get staticDefaultSummary(): string {
+    if (!this.hasConfiguredStaticDefault) {
+      return '';
+    }
+    const value = this._field?.defaultValue;
+    if (Array.isArray(value)) {
+      return value.map((item) => String(item)).filter(Boolean).join(', ');
+    }
+    if (value && typeof value === 'object') {
+      const record = value as Record<string, unknown>;
+      if ('from' in record || 'to' in record) {
+        const from = record['from'] == null || record['from'] === '' ? '…' : String(record['from']);
+        const to = record['to'] == null || record['to'] === '' ? '…' : String(record['to']);
+        return `${from} – ${to}`;
+      }
+      if ('value' in record) {
+        const amount = record['value'] == null ? '' : String(record['value']);
+        const unit = record['unit'] == null ? '' : String(record['unit']);
+        return [amount, unit].filter(Boolean).join(' ');
+      }
+      return '';
+    }
+    if (value === this.currentUserDefaultToken) {
+      return 'Current logged-in user';
+    }
+    return value == null ? '' : String(value);
   }
 
   get dynamicDefaultSourceSummary(): string {
@@ -1059,6 +1103,9 @@ export class FieldSettingsComponent implements OnDestroy {
 
     const dynamic = this.usesDynamicDefaultValue;
     this.valueModeDraft = dynamic ? 'dynamic' : 'static';
+    this.valueModeDraftStaticValue = this.cloneConfiguredDefaultValue(
+      this._field.defaultValue ?? this.clearStaticDefaultForType(this._field.type),
+    );
     this.valueModeDraftSource = dynamic
       ? cloneDefaultValueSource(this._field.defaultValueSource)
       : this.supportsDynamicDefaultValue
@@ -1074,6 +1121,7 @@ export class FieldSettingsComponent implements OnDestroy {
   closeValueModeModal(): void {
     this.valueModeModalOpen = false;
     this.valueModeDraftSource = null;
+    this.valueModeDraftStaticValue = '';
   }
 
   selectValueModeDraft(mode: 'static' | 'dynamic'): void {
@@ -1092,9 +1140,13 @@ export class FieldSettingsComponent implements OnDestroy {
     }
 
     if (this.valueModeDraft === 'static') {
+      this._field.defaultValue = this.cloneConfiguredDefaultValue(
+        this.valueModeDraftStaticValue,
+      );
       this._field.defaultValueSource = null;
       this.valueModeModalOpen = false;
       this.valueModeDraftSource = null;
+      this.valueModeDraftStaticValue = '';
       this.onChange();
       return;
     }
@@ -1122,6 +1174,7 @@ export class FieldSettingsComponent implements OnDestroy {
     this._field.defaultValue = this.clearStaticDefaultForType(this._field.type);
     this.valueModeModalOpen = false;
     this.valueModeDraftSource = null;
+    this.valueModeDraftStaticValue = '';
     this.onChange();
   }
 
@@ -1420,11 +1473,11 @@ export class FieldSettingsComponent implements OnDestroy {
   }
 
   get configuredDefaultValue(): unknown {
-    return this._field?.defaultValue ?? '';
+    return this.readConfiguredDefaultValue();
   }
 
   get configuredValueText(): string {
-    const value = this._field?.defaultValue;
+    const value = this.readConfiguredDefaultValue();
     if (value == null || value === '') {
       return '';
     }
@@ -1465,12 +1518,12 @@ export class FieldSettingsComponent implements OnDestroy {
   }
 
   get configuredRangeFrom(): string {
-    const range = normalizeRangeValue(this._field?.defaultValue);
+    const range = normalizeRangeValue(this.readConfiguredDefaultValue());
     return range.from == null || range.from === '' ? '' : String(range.from);
   }
 
   get configuredRangeTo(): string {
-    const range = normalizeRangeValue(this._field?.defaultValue);
+    const range = normalizeRangeValue(this.readConfiguredDefaultValue());
     return range.to == null || range.to === '' ? '' : String(range.to);
   }
 
@@ -1478,10 +1531,14 @@ export class FieldSettingsComponent implements OnDestroy {
     if (!this._field || !isMeasurementFieldType(this._field.type)) {
       return '';
     }
-    const current = normalizeMeasurementValue(this._field.defaultValue, this._field.type, {
-      unitMode: normalizeMeasurementUnitMode(this._field.unitMode),
-      unit: this._field.unit,
-    });
+    const current = normalizeMeasurementValue(
+      this.readConfiguredDefaultValue(),
+      this._field.type,
+      {
+        unitMode: normalizeMeasurementUnitMode(this._field.unitMode),
+        unit: this._field.unit,
+      },
+    );
     return current.value == null ? '' : String(current.value);
   }
 
@@ -1501,27 +1558,18 @@ export class FieldSettingsComponent implements OnDestroy {
       }
     }
 
-    if (this.configuredValuesEqual(this._field.defaultValue, next)) {
-      return;
-    }
-    this._field.defaultValue = next;
-    this.onChange();
+    this.writeConfiguredDefaultValue(next);
   }
 
   onConfiguredValueTextChange(value: string | number): void {
     if (!this._field || !this.isFieldEditable || !this.supportsConfiguredValue) {
       return;
     }
-    const next = value == null ? '' : value;
-    if (this.configuredValuesEqual(this._field.defaultValue, next)) {
-      return;
-    }
-    this._field.defaultValue = next;
-    this.onChange();
+    this.writeConfiguredDefaultValue(value == null ? '' : value);
   }
 
   isConfiguredMultiValueSelected(optionValue: string | number): boolean {
-    const current = this._field?.defaultValue;
+    const current = this.readConfiguredDefaultValue();
     if (!Array.isArray(current)) {
       return String(current ?? '') === String(optionValue);
     }
@@ -1533,8 +1581,8 @@ export class FieldSettingsComponent implements OnDestroy {
       return;
     }
 
-    const current = Array.isArray(this._field.defaultValue)
-      ? [...this._field.defaultValue]
+    const current = Array.isArray(this.readConfiguredDefaultValue())
+      ? [...(this.readConfiguredDefaultValue() as unknown[])]
       : [];
 
     const next = checked
@@ -1543,12 +1591,7 @@ export class FieldSettingsComponent implements OnDestroy {
         : [...current, optionValue]
       : current.filter((item) => String(item) !== String(optionValue));
 
-    if (this.configuredValuesEqual(this._field.defaultValue, next)) {
-      return;
-    }
-
-    this._field.defaultValue = next;
-    this.onChange();
+    this.writeConfiguredDefaultValue(next);
   }
 
   onConfiguredRangeSideChange(side: 'from' | 'to', raw: string | number): void {
@@ -1556,7 +1599,7 @@ export class FieldSettingsComponent implements OnDestroy {
       return;
     }
 
-    const current = normalizeRangeValue(this._field.defaultValue);
+    const current = normalizeRangeValue(this.readConfiguredDefaultValue());
     let nextSide: string | number | null =
       raw === '' || raw == null ? null : raw;
 
@@ -1575,12 +1618,7 @@ export class FieldSettingsComponent implements OnDestroy {
         ? ''
         : next;
 
-    if (this.configuredValuesEqual(this._field.defaultValue, nextDefault)) {
-      return;
-    }
-
-    this._field.defaultValue = nextDefault;
-    this.onChange();
+    this.writeConfiguredDefaultValue(nextDefault);
   }
 
   onConfiguredMeasurementAmountChange(raw: string | number): void {
@@ -1588,10 +1626,14 @@ export class FieldSettingsComponent implements OnDestroy {
       return;
     }
 
-    const current = normalizeMeasurementValue(this._field.defaultValue, this._field.type, {
-      unitMode: normalizeMeasurementUnitMode(this._field.unitMode),
-      unit: this._field.unit,
-    });
+    const current = normalizeMeasurementValue(
+      this.readConfiguredDefaultValue(),
+      this._field.type,
+      {
+        unitMode: normalizeMeasurementUnitMode(this._field.unitMode),
+        unit: this._field.unit,
+      },
+    );
 
     const text = String(raw ?? '').trim();
     const amount = text === '' ? null : Number(text);
@@ -1608,12 +1650,71 @@ export class FieldSettingsComponent implements OnDestroy {
             unit,
           };
 
-    if (this.configuredValuesEqual(this._field.defaultValue, nextDefault)) {
+    this.writeConfiguredDefaultValue(nextDefault);
+  }
+
+  /** Read static default from modal draft while open; otherwise from the field. */
+  private readConfiguredDefaultValue(): unknown {
+    if (this.valueModeModalOpen) {
+      return this.valueModeDraftStaticValue;
+    }
+    return this._field?.defaultValue ?? '';
+  }
+
+  /**
+   * Write static default into the modal draft while open (Apply commits later).
+   * Outside the modal, keep the previous live-write path as a safety net.
+   */
+  private writeConfiguredDefaultValue(next: unknown): void {
+    if (!this._field || !this.isFieldEditable || !this.supportsConfiguredValue) {
       return;
     }
 
-    this._field.defaultValue = nextDefault;
+    if (this.valueModeModalOpen) {
+      if (this.configuredValuesEqual(this.valueModeDraftStaticValue, next)) {
+        return;
+      }
+      this.valueModeDraftStaticValue = next;
+      return;
+    }
+
+    if (this.configuredValuesEqual(this._field.defaultValue, next)) {
+      return;
+    }
+    this._field.defaultValue = next;
     this.onChange();
+  }
+
+  private cloneConfiguredDefaultValue(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return [...value];
+    }
+    if (value && typeof value === 'object') {
+      return { ...(value as Record<string, unknown>) };
+    }
+    return value ?? '';
+  }
+
+  private isConfiguredDefaultEmpty(value: unknown): boolean {
+    if (value == null || value === '') {
+      return true;
+    }
+    if (Array.isArray(value)) {
+      return value.length === 0;
+    }
+    if (typeof value === 'object') {
+      const record = value as Record<string, unknown>;
+      if ('from' in record || 'to' in record) {
+        return (
+          (record['from'] == null || record['from'] === '') &&
+          (record['to'] == null || record['to'] === '')
+        );
+      }
+      if ('value' in record) {
+        return record['value'] == null || record['value'] === '';
+      }
+    }
+    return false;
   }
 
   /** Prevent Value ngModel echo writes from re-emitting identical configuration. */
