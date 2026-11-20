@@ -4,6 +4,7 @@ import {
   FormSection,
 } from '../../extra-management/forms/models/dynamic-form.models';
 import { mapConfigFieldToBuilder } from '../../extra-management/forms/utils/field-builder-adapter.utils';
+import { isRepeaterEnabled } from '../../../form-builder/utils/repeater-field.utils';
 
 export interface AssignmentSectionBuilder {
   id: string;
@@ -137,6 +138,16 @@ function applyAnswer(
     };
   }
 
+  // Repeater targets: keep the answer map on `value` only so the schema
+  // static default remains available to seed newly selected instances.
+  if (isRepeaterEnabled(field)) {
+    return {
+      ...field,
+      // Runtime DynamicField accepts object maps; FormFieldConfig typing is narrower.
+      value: answer as FormFieldConfig['value'],
+    };
+  }
+
   return {
     ...field,
     value: normalizeDisplayValue(answer),
@@ -177,12 +188,30 @@ function toBuilderField(
     id: field.id || field.name || `field_${sectionIndex}_${fieldIndex}`,
   });
 
+  const repeaterEnabled =
+    isRepeaterEnabled(field) || isRepeaterEnabled(builder);
+
+  // Repeater: keep answer map on `value` and schema static default on `defaultValue`.
+  // Ordinary fields still prefer defaultValue for backward-compatible hydration.
+  if (repeaterEnabled) {
+    return {
+      ...builder,
+      value: field.value ?? builder.value,
+      defaultValue: field.defaultValue ?? builder.defaultValue,
+      defaultValueSource:
+        field.defaultValueSource ?? builder.defaultValueSource ?? null,
+      repeaterConfig: field.repeaterConfig ?? builder.repeaterConfig ?? null,
+      order: fieldIndex,
+    };
+  }
+
   return {
     ...builder,
     value: field.defaultValue ?? field.value ?? builder.value,
     defaultValue: field.defaultValue ?? field.value ?? builder.defaultValue,
     defaultValueSource:
       field.defaultValueSource ?? builder.defaultValueSource ?? null,
+    repeaterConfig: field.repeaterConfig ?? builder.repeaterConfig ?? null,
     order: fieldIndex,
   };
 }

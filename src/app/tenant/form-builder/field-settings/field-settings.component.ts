@@ -85,6 +85,16 @@ import {
 } from '../utils/field-default-value.utils';
 import { buildPlaceholderFromLabel, supportsPlaceholderAutoGeneration } from '../utils/form-field.factory';
 import {
+  FieldRepeaterConfig,
+  cloneRepeaterConfig,
+  isRepeaterEnabled,
+  isRepeaterTargetFieldType,
+  listEligibleRepeaterSourceFields,
+  normalizeRepeaterConfig,
+  resolveRepeaterSourceFieldLabel,
+  validateRepeaterConfigDraft,
+} from '../utils/repeater-field.utils';
+import {
   cloneImageFiles,
   getImageUploadRejectionReason,
   IMAGE_ACCEPT_ATTRIBUTE,
@@ -448,6 +458,7 @@ export class FieldSettingsComponent implements OnDestroy {
       isReadonly: this._field.isReadonly === true,
       defaultValue: this._field.defaultValue,
       defaultValueSource: cloneDefaultValueSource(this._field.defaultValueSource),
+      repeaterConfig: cloneRepeaterConfig(this._field.repeaterConfig),
       options: [...(this._field.options || [])],
       optionSource: this.resolveEmittedOptionSource(),
       referenceImages:
@@ -986,8 +997,20 @@ export class FieldSettingsComponent implements OnDestroy {
   /** Draft static default edited inside the modal before Apply. */
   valueModeDraftStaticValue: unknown = '';
 
+  /** Modal for Make Repeater Field configuration (Phase 1 — persistence only). */
+  repeaterModalOpen = false;
+  /** Draft toggle while the repeater modal is open. */
+  repeaterDraftEnabled = false;
+  /** Draft source field id while the repeater modal is open. */
+  repeaterDraftSourceFieldId = '';
+
   get supportsDynamicDefaultValue(): boolean {
-    return !!this._field && supportsSetValueFieldType(this._field.type);
+    // Mutual exclusion with Repeater: DD is not configurable while repeater is on.
+    return (
+      !!this._field &&
+      supportsSetValueFieldType(this._field.type) &&
+      !isRepeaterEnabled(this._field)
+    );
   }
 
   get usesDynamicDefaultValue(): boolean {
@@ -1051,6 +1074,150 @@ export class FieldSettingsComponent implements OnDestroy {
           this.resolveDefaultValueRelatedPropertyLabel(propertyKey, sourceFieldId),
       },
     );
+  }
+
+  /** Whether this field type may be configured as a repeater target. */
+  get supportsRepeaterConfiguration(): boolean {
+    return isRepeaterTargetFieldType(this._field?.type);
+  }
+
+  get hasRepeaterConfigured(): boolean {
+    return isRepeaterEnabled(this._field);
+  }
+
+  get eligibleRepeaterSourceFields(): FormField[] {
+    if (!this._field?.id) {
+      return [];
+    }
+    return listEligibleRepeaterSourceFields(
+      this.schemaSignal(),
+      this._field.id,
+    ) as FormField[];
+  }
+
+  get hasEligibleRepeaterSources(): boolean {
+    return this.eligibleRepeaterSourceFields.length > 0;
+  }
+
+  /**
+   * Entry is interactive when editable and either a compatible source exists
+   * or an existing config needs to be editable (e.g. clear after source removed).
+   */
+  get canOpenRepeaterModal(): boolean {
+    return (
+      this.supportsRepeaterConfiguration &&
+      this.isFieldEditable &&
+      (this.hasEligibleRepeaterSources || this.hasRepeaterConfigured)
+    );
+  }
+
+  get repeaterConfigSummary(): string {
+    const config = normalizeRepeaterConfig(this._field?.repeaterConfig);
+    if (!config) {
+      return '';
+    }
+    const sourceLabel = resolveRepeaterSourceFieldLabel(
+      this.schemaSignal(),
+      config.sourceFieldId,
+    );
+    return sourceLabel ? `Repeats based on: ${sourceLabel}` : 'Repeater configured';
+  }
+
+  get repeaterDraftSourceLabel(): string {
+    return (
+      resolveRepeaterSourceFieldLabel(
+        this.schemaSignal(),
+        this.repeaterDraftSourceFieldId,
+      ) || 'Select a source field'
+    );
+  }
+
+  openRepeaterModal(): void {
+    if (!this._field || !this.canOpenRepeaterModal) {
+      return;
+    }
+
+    const saved = normalizeRepeaterConfig(this._field.repeaterConfig);
+    this.repeaterDraftEnabled = !!saved?.enabled;
+    this.repeaterDraftSourceFieldId = saved?.sourceFieldId ?? '';
+    this.repeaterModalOpen = true;
+  }
+
+  closeRepeaterModal(): void {
+    this.repeaterModalOpen = false;
+    this.repeaterDraftEnabled = false;
+    this.repeaterDraftSourceFieldId = '';
+  }
+
+  setRepeaterDraftEnabled(enabled: boolean): void {
+    this.repeaterDraftEnabled = enabled === true;
+    if (!this.repeaterDraftEnabled) {
+      return;
+    }
+    if (
+      this.repeaterDraftSourceFieldId &&
+      !this.eligibleRepeaterSourceFields.some(
+        (field) => field.id === this.repeaterDraftSourceFieldId,
+      )
+    ) {
+      this.repeaterDraftSourceFieldId = '';
+    }
+  }
+
+  selectRepeaterDraftSource(fieldId: string): void {
+    const id = String(fieldId ?? '').trim();
+    if (!id) {
+      this.repeaterDraftSourceFieldId = '';
+      return;
+    }
+    if (
+      !this.eligibleRepeaterSourceFields.some((field) => String(field.id) === id)
+    ) {
+      return;
+    }
+    this.repeaterDraftSourceFieldId = id;
+  }
+
+  applyRepeaterModal(): void {
+    if (!this._field || !this.isFieldEditable || !this.supportsRepeaterConfiguration) {
+      return;
+    }
+
+    const draft = {
+      enabled: this.repeaterDraftEnabled,
+      sourceFieldId: this.repeaterDraftSourceFieldId,
+    };
+    const issue = validateRepeaterConfigDraft(
+      draft,
+      this.schemaSignal(),
+      this._field.id,
+    );
+    if (issue) {
+      this.toastr.warning(issue);
+      return;
+    }
+
+    const next: FieldRepeaterConfig | null = draft.enabled
+      ? {
+          enabled: true,
+          sourceFieldId: String(draft.sourceFieldId).trim(),
+        }
+      : null;
+
+    this._field.repeaterConfig = next;
+    // Enabling a repeater clears Dynamic Default Value (parent-level mutual exclusion).
+    if (next) {
+      this._field.defaultValueSource = null;
+      if (this.fieldHasAnySetValueAction()) {
+        this.toastr.warning(
+          'Set Value actions on this field are unsupported while Repeater is enabled. They are preserved but will not run. Remove them from Conditional Logic if they are no longer needed.',
+        );
+      }
+    }
+    this.repeaterModalOpen = false;
+    this.repeaterDraftEnabled = false;
+    this.repeaterDraftSourceFieldId = '';
+    this.onChange();
   }
 
   /**
@@ -1172,6 +1339,8 @@ export class FieldSettingsComponent implements OnDestroy {
     this._field.defaultValueSource = source;
     // Clear static default so the two modes cannot conflict.
     this._field.defaultValue = this.clearStaticDefaultForType(this._field.type);
+    // Dynamic Default and Repeater are mutually exclusive in v1.
+    this._field.repeaterConfig = null;
     this.valueModeModalOpen = false;
     this.valueModeDraftSource = null;
     this.valueModeDraftStaticValue = '';
@@ -2043,7 +2212,33 @@ export class FieldSettingsComponent implements OnDestroy {
       return actions.filter(action => action.value !== 'setValue');
     }
 
+    // Repeater + Set Value are incompatible in v1. Keep an existing Set Value
+    // action visible so the user can remove it; block adding a new one.
+    if (
+      isRepeaterEnabled(this._field) &&
+      !hasSetValueAction(this.conditionEditor)
+    ) {
+      return actions.filter(action => action.value !== 'setValue');
+    }
+
     return actions;
+  }
+
+  /** Saved/editor Set Value that cannot run while Repeater is enabled. */
+  get hasUnsupportedRepeaterSetValue(): boolean {
+    return isRepeaterEnabled(this._field) && this.fieldHasAnySetValueAction();
+  }
+
+  private fieldHasAnySetValueAction(): boolean {
+    if (!this._field) {
+      return false;
+    }
+    if (hasSetValueAction(this.conditionEditor)) {
+      return true;
+    }
+    return normalizeFieldConditionRules(this._field.condition).some((rule) =>
+      hasSetValueAction(rule),
+    );
   }
 
   get conditionEnabled(): boolean {
@@ -2821,6 +3016,17 @@ export class FieldSettingsComponent implements OnDestroy {
     }
 
     const wasSelected = this.isConditionActionSelected(type);
+    if (
+      type === 'setValue' &&
+      !wasSelected &&
+      isRepeaterEnabled(this._field)
+    ) {
+      this.toastr.warning(
+        'Set Value is not supported while Repeater is enabled. Remove the repeater configuration first, or use Regular Form parent-level show/hide/require actions instead.',
+      );
+      return;
+    }
+
     if (
       wasSelected &&
       getSelectedActionTypes(this.conditionEditor).length <= 1
@@ -4095,6 +4301,11 @@ export class FieldSettingsComponent implements OnDestroy {
     const preserveActiveRule =
       this.conditionModalOpen && !!this._field?.id && this._field.id === value.id;
 
+    // Switching fields must not keep another field's repeater modal draft.
+    if (this.repeaterModalOpen && this._field?.id && this._field.id !== value.id) {
+      this.closeRepeaterModal();
+    }
+
     this._field = {
       ...value,
       defaultValue:
@@ -4102,6 +4313,7 @@ export class FieldSettingsComponent implements OnDestroy {
           ? value.defaultValue
           : '',
       defaultValueSource: cloneDefaultValueSource(value.defaultValueSource),
+      repeaterConfig: cloneRepeaterConfig(value.repeaterConfig),
       width: value.width ?? 12,
       validations: value.validations || {},
       condition: serializeConditionalLogic(value.condition),

@@ -1,4 +1,12 @@
-import { FormBuilder, FormControl, Validators } from '@angular/forms';
+import {
+  AbstractControl,
+  FormBuilder,
+  FormControl,
+  FormGroup,
+  ValidationErrors,
+  ValidatorFn,
+  Validators,
+} from '@angular/forms';
 import {
   DynamicField,
   DynamicFieldOption,
@@ -46,6 +54,12 @@ import {
   normalizeMeasurementUnitCode,
   normalizeMeasurementUnitMode,
 } from './measurement-units';
+import {
+  isRepeaterAnswerMap,
+  isRuntimeRepeaterField,
+  normalizeRepeaterAnswerMap,
+} from '../../tenant/form-builder/utils/repeater-field.utils';
+import { isDynamicDefaultValueSource } from '../conditional-logic';
 
 export function sortDynamicFields(fields: DynamicField[]): DynamicField[] {
   return [...fields]
@@ -246,13 +260,215 @@ export function getFieldValidators(
   return validators;
 }
 
+/**
+ * Parent-level required rule: a required repeater with zero selected source
+ * items is invalid. Per-item emptiness is enforced by child validators.
+ */
+export function repeaterRequiredSelectionValidator(): ValidatorFn {
+  return (control: AbstractControl): ValidationErrors | null => {
+    if (!(control instanceof FormGroup)) {
+      return null;
+    }
+    return Object.keys(control.controls).length === 0
+      ? { repeaterRequiredSelection: true }
+      : null;
+  };
+}
+
+export function getRepeaterGroupValidators(options?: {
+  required?: boolean;
+  visible?: boolean;
+}): ValidatorFn[] {
+  const required = options?.required ?? false;
+  const visible = options?.visible ?? true;
+  if (visible && required) {
+    return [repeaterRequiredSelectionValidator()];
+  }
+  return [];
+}
+
+/** Empty child seed by target type when no static default applies. */
+export function getEmptyRepeaterChildValue(field: DynamicField): unknown {
+  switch (field.type) {
+    case 'number':
+      return null;
+    case 'time':
+      return normalizeTimeFieldValue(null);
+    case 'date':
+      return '';
+    default:
+      return '';
+  }
+}
+
+/**
+ * Normalize a single repeated child value to the target field's control shape.
+ */
+export function normalizeRepeaterChildValue(
+  field: DynamicField,
+  value: unknown,
+): unknown {
+  switch (field.type) {
+    case 'number': {
+      if (value === '' || value == null) {
+        return null;
+      }
+      const numeric = typeof value === 'number' ? value : Number(value);
+      return Number.isFinite(numeric) ? numeric : null;
+    }
+    case 'date':
+      return normalizeDateFieldValue(value) ?? '';
+    case 'time':
+      return normalizeTimeFieldValue(value);
+    default:
+      return value ?? '';
+  }
+}
+
+/**
+ * Static default seed for a newly created repeated instance.
+ * Never uses a hydrated answer map or dynamic-default source as the seed.
+ */
+export function getRepeaterChildSeedValue(field: DynamicField): unknown {
+  if (isDynamicDefaultValueSource(field.defaultValueSource)) {
+    return getEmptyRepeaterChildValue(field);
+  }
+
+  if (isRepeaterAnswerMap(field.defaultValue)) {
+    return getEmptyRepeaterChildValue(field);
+  }
+
+  return normalizeRepeaterChildValue(
+    field,
+    getInitialFieldValue({
+      ...field,
+      value: undefined,
+      defaultValueSource: null,
+    }),
+  );
+}
+
+/**
+ * Nested FormGroup (FormRecord) under the target field's existing `name`.
+ * Children are added/removed by runtime sync from the source selection.
+ */
+export function buildRepeaterFormGroup(
+  fb: FormBuilder,
+  field: DynamicField,
+  options?: { required?: boolean; visible?: boolean },
+): FormGroup {
+  const answerMap = normalizeRepeaterAnswerMap(
+    isRepeaterAnswerMap(field.value)
+      ? field.value
+      : isRepeaterAnswerMap(field.defaultValue)
+        ? field.defaultValue
+        : {},
+  );
+  const childValidators = getFieldValidators(field, options);
+  const controls: Record<string, FormControl> = {};
+
+  for (const [itemId, raw] of Object.entries(answerMap)) {
+    controls[itemId] = new FormControl(
+      normalizeRepeaterChildValue(field, raw),
+      childValidators,
+    );
+  }
+
+  return fb.group(controls, {
+    validators: getRepeaterGroupValidators({
+      required: options?.required ?? !!field.required,
+      visible: options?.visible ?? true,
+    }),
+  });
+}
+
+/**
+ * Synchronize repeater FormGroup children with the current selected source ids.
+ * Preserves existing controls by source item id; seeds only newly added children.
+ * @returns true when controls were added or removed.
+ */
+export function syncRepeaterFormGroup(
+  group: FormGroup,
+  field: DynamicField,
+  selectedIds: readonly string[],
+  options?: {
+    required?: boolean;
+    visible?: boolean;
+    /** Extra answer map used when seeding (e.g. draft values still on the field). */
+    savedAnswers?: unknown;
+  },
+): boolean {
+  const validators = getFieldValidators(field, {
+    required: options?.required,
+    visible: options?.visible,
+  });
+  const saved = normalizeRepeaterAnswerMap(
+    options?.savedAnswers ??
+      (isRepeaterAnswerMap(field.value)
+        ? field.value
+        : isRepeaterAnswerMap(field.defaultValue)
+          ? field.defaultValue
+          : {}),
+  );
+  const seed = getRepeaterChildSeedValue(field);
+  const selected = selectedIds.map((id) => String(id).trim()).filter(Boolean);
+  const selectedSet = new Set(selected);
+  let changed = false;
+
+  for (const key of Object.keys(group.controls)) {
+    if (!selectedSet.has(key)) {
+      group.removeControl(key, { emitEvent: false });
+      changed = true;
+    }
+  }
+
+  for (const itemId of selected) {
+    if (group.contains(itemId)) {
+      const child = group.get(itemId);
+      child?.setValidators(validators);
+      child?.updateValueAndValidity({ emitEvent: false });
+      continue;
+    }
+
+    const initial = Object.prototype.hasOwnProperty.call(saved, itemId)
+      ? normalizeRepeaterChildValue(field, saved[itemId])
+      : seed;
+
+    group.addControl(
+      itemId,
+      new FormControl(initial, validators),
+      { emitEvent: false },
+    );
+    changed = true;
+  }
+
+  group.setValidators(
+    getRepeaterGroupValidators({
+      required: options?.required,
+      visible: options?.visible,
+    }),
+  );
+  if (changed && selected.length === 0 && (options?.required ?? false)) {
+    group.markAsTouched({ onlySelf: true });
+  }
+  group.updateValueAndValidity({ emitEvent: false });
+  return changed;
+}
+
 export function buildDynamicFormGroupConfig(
   fb: FormBuilder,
   sortedFields: DynamicField[],
-): Record<string, FormControl | unknown[]> {
-  const groupConfig: Record<string, FormControl | unknown[]> = {};
+  options?: { expandRepeaters?: boolean },
+): Record<string, FormControl | FormGroup | unknown[]> {
+  const groupConfig: Record<string, FormControl | FormGroup | unknown[]> = {};
+  const expandRepeaters = options?.expandRepeaters !== false;
 
   for (const field of sortedFields) {
+    if (expandRepeaters && isRuntimeRepeaterField(field)) {
+      groupConfig[field.name] = buildRepeaterFormGroup(fb, field);
+      continue;
+    }
+
     if (field.type === 'checkbox') {
       groupConfig[field.name] = new FormControl(getInitialFieldValue(field));
       continue;
@@ -282,6 +498,17 @@ export function normalizeCheckboxFormValue(
   const result: DynamicFormValue = { ...raw };
 
   for (const field of sortedFields) {
+    if (isRuntimeRepeaterField(field)) {
+      const value = raw[field.name];
+      const map = normalizeRepeaterAnswerMap(value);
+      const normalized: Record<string, unknown> = {};
+      for (const [itemId, itemValue] of Object.entries(map)) {
+        normalized[itemId] = normalizeRepeaterChildValue(field, itemValue);
+      }
+      result[field.name] = normalized;
+      continue;
+    }
+
     if (field.type === 'checkbox') {
       const value = raw[field.name];
 

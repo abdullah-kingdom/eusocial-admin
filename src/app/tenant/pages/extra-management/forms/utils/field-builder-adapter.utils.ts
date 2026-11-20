@@ -35,6 +35,7 @@ import {
   normalizeStaticChoiceOptions,
   toStaticChoiceOptions,
 } from '../../../../form-builder/utils/field-options.utils';
+import { cloneRepeaterConfig } from '../../../../form-builder/utils/repeater-field.utils';
 import { FieldType, FormFieldConfig, FormSelectOption, createId } from '../models/dynamic-form.models';
 
 /** Builder type picker options (maps to FormField + FormFieldConfig). */
@@ -142,6 +143,7 @@ export function mapConfigFieldToBuilder(field: FormFieldConfig): FormField {
     defaultValueSource: field.defaultValueSource
       ? JSON.parse(JSON.stringify(field.defaultValueSource))
       : null,
+    repeaterConfig: cloneRepeaterConfig(field.repeaterConfig),
     maxRating: field.maxRating,
     rangeType: formFieldType === 'range' ? normalizeRangeType(field.rangeType) : undefined,
     rangeMin: field.rangeMin,
@@ -219,6 +221,7 @@ export function mapBuilderFieldToConfig(
     defaultValueSource: field.defaultValueSource
       ? JSON.parse(JSON.stringify(field.defaultValueSource))
       : null,
+    repeaterConfig: cloneRepeaterConfig(field.repeaterConfig),
     maxRating: field.maxRating,
     rangeType: type === 'range' ? normalizeRangeType(field.rangeType) : undefined,
     rangeMin: field.rangeMin,

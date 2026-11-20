@@ -8,6 +8,10 @@ import {
   SelectSelectionType,
 } from '../../../../form-builder/models/form-field.model';
 import { createOptionId } from '../../../../form-builder/utils/field-options.utils';
+import {
+  FieldRepeaterConfig,
+  normalizeRepeaterConfig,
+} from '../../../../form-builder/utils/repeater-field.utils';
 import { FormLogicRule } from '../../../../forms/logic-rules/logic-rule.models';
 import { normalizeLogicRules } from '../../../../forms/logic-rules/logic-rule.utils';
 
@@ -83,6 +87,8 @@ export interface FormFieldConfig {
   defaultValue?: unknown;
   /** Dynamic default source — independent of Conditional Logic actions. */
   defaultValueSource?: ValueSource | null;
+  /** Optional repeater configuration (Phase 1 — persistence only). */
+  repeaterConfig?: FieldRepeaterConfig | null;
   /** Maximum rating value (default 5). */
   maxRating?: number;
   /**
@@ -893,6 +899,7 @@ export function stripFieldId(field: FormFieldConfig): Omit<FormFieldConfig, 'id'
   optionSource?: FormFieldConfig['optionSource'];
   defaultValue?: unknown;
   defaultValueSource?: ValueSource | null;
+  repeaterConfig?: FieldRepeaterConfig | null;
 } {
   const {
     fieldTypeName: _fieldTypeName,
@@ -902,6 +909,7 @@ export function stripFieldId(field: FormFieldConfig): Omit<FormFieldConfig, 'id'
     value: _previewValue,
     defaultValue,
     defaultValueSource,
+    repeaterConfig,
     options,
     condition,
     optionSource,
@@ -911,6 +919,7 @@ export function stripFieldId(field: FormFieldConfig): Omit<FormFieldConfig, 'id'
 
   const normalizedDefaultValueSource =
     normalizeDefaultValueSource(defaultValueSource);
+  const normalizedRepeaterConfig = normalizeRepeaterConfig(repeaterConfig);
 
   const normalizedOptions: FormSelectOption[] | undefined =
     optionSource?.type === 'dynamic'
@@ -962,6 +971,9 @@ export function stripFieldId(field: FormFieldConfig): Omit<FormFieldConfig, 'id'
     ...(hasDefaultValue ? { defaultValue } : {}),
     ...(normalizedDefaultValueSource
       ? { defaultValueSource: normalizedDefaultValueSource }
+      : {}),
+    ...(normalizedRepeaterConfig
+      ? { repeaterConfig: normalizedRepeaterConfig }
       : {}),
   };
 }

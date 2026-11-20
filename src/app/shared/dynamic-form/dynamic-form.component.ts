@@ -13,6 +13,15 @@ import {
   OnDestroy,
 } from '@angular/core';
 import { AbstractControl, FormBuilder, FormGroup } from '@angular/forms';
+import {
+  extractSelectedSourceIds,
+  formatRepeaterInstanceLabel,
+  isRepeaterAnswerMap,
+  isRuntimeRepeaterField as isConfiguredRuntimeRepeaterField,
+  normalizeRepeaterAnswerMap,
+  normalizeRepeaterConfig,
+  resolveRepeaterSourceItemLabel,
+} from '../../tenant/form-builder/utils/repeater-field.utils';
 import { Subscription, forkJoin, merge, of } from 'rxjs';
 import { catchError, take } from 'rxjs/operators';
 import {
@@ -65,6 +74,7 @@ import {
   normalizeCheckboxFormValue,
   serializeDynamicFieldsSchema,
   sortDynamicFields,
+  syncRepeaterFormGroup,
 } from './dynamic-form.builder';
 import {
   allowsDecimalPoint,
@@ -433,8 +443,10 @@ export class DynamicFormComponent implements OnDestroy {
     }
 
     this.form.patchValue(normalized);
+    this.syncAllRepeaterControls();
     this.refreshLocationOptionsFromValues();
     this.refreshConditionalEffects();
+    this.syncAllRepeaterControls();
     this.emitNormalizedValue();
     this.syncSignaturePadsFromValues();
     this.cdr.markForCheck();
@@ -444,9 +456,20 @@ export class DynamicFormComponent implements OnDestroy {
     if (!this.form) return;
 
     for (const field of this.sortedFields()) {
-      this.form.get(field.name)?.setValue(this.getInitialValue(field));
+      const control = this.form.get(field.name);
+      if (!control) {
+        continue;
+      }
+      if (this.isRuntimeRepeaterField(field) && control instanceof FormGroup) {
+        for (const key of Object.keys(control.controls)) {
+          control.removeControl(key, { emitEvent: false });
+        }
+        continue;
+      }
+      control.setValue(this.getInitialValue(field));
     }
 
+    this.syncAllRepeaterControls();
     this.imageUploading.set({});
     this.signatureUploading.set({});
     this.refreshConditionalEffects();
@@ -549,9 +572,83 @@ export class DynamicFormComponent implements OnDestroy {
   }
 
   getErrorMessage(field: DynamicField): string | null {
+    if (this.isRuntimeRepeaterField(field)) {
+      const control = this.getControl(field.name);
+      // Parent-level message only (e.g. required with zero selected items).
+      // Per-instance errors render next to each repeated control.
+      if (!control?.errors?.['repeaterRequiredSelection']) {
+        return null;
+      }
+      return getDynamicFieldErrorMessage(
+        field,
+        control,
+        shouldShowDynamicFieldError(control),
+      );
+    }
     const control = this.getControl(field.name);
     return getDynamicFieldErrorMessage(
       field,
+      control,
+      shouldShowDynamicFieldError(control),
+    );
+  }
+
+  /**
+   * Runtime repeater expansion is Regular Form / Template Preview only.
+   * Typeform mode keeps a non-expanded control path (Phase 2 scope).
+   */
+  isRuntimeRepeaterField(field: DynamicField): boolean {
+    return !this.typeformMode() && isConfiguredRuntimeRepeaterField(field);
+  }
+
+  getRepeaterInstances(
+    field: DynamicField,
+  ): Array<{ id: string; label: string }> {
+    if (!this.isRuntimeRepeaterField(field) || !this.form) {
+      return [];
+    }
+
+    const config = normalizeRepeaterConfig(field.repeaterConfig);
+    if (!config) {
+      return [];
+    }
+
+    const source = this.sortedFields().find(
+      (item) => item.id === config.sourceFieldId,
+    );
+    if (!source) {
+      return [];
+    }
+
+    const selectedIds = extractSelectedSourceIds(
+      this.form.get(source.name)?.value,
+    );
+    const options = this.getFieldOptions(source);
+
+    return selectedIds.map((id) => ({
+      id,
+      label: formatRepeaterInstanceLabel(
+        resolveRepeaterSourceItemLabel(id, options),
+        field.label,
+      ),
+    }));
+  }
+
+  getRepeaterInstanceControl(
+    field: DynamicField,
+    instanceId: string,
+  ): AbstractControl | null {
+    return this.form?.get([field.name, instanceId]) ?? null;
+  }
+
+  getRepeaterInstanceErrorMessage(
+    field: DynamicField,
+    instanceId: string,
+    instanceLabel: string,
+  ): string | null {
+    const control = this.getRepeaterInstanceControl(field, instanceId);
+    return getDynamicFieldErrorMessage(
+      { ...field, label: instanceLabel || field.label },
       control,
       shouldShowDynamicFieldError(control),
     );
@@ -1071,28 +1168,45 @@ export class DynamicFormComponent implements OnDestroy {
     return TIME_MERIDIEM_OPTIONS;
   }
 
-  getTimeHour12Value(field: DynamicField): number | null {
-    return getTimeHour12(this.form?.get(field.name)?.value);
+  getTimeHour12Value(field: DynamicField, instanceId?: string): number | null {
+    const control = instanceId
+      ? this.getRepeaterInstanceControl(field, instanceId)
+      : this.form?.get(field.name);
+    return getTimeHour12(control?.value);
   }
 
-  getTimeMinuteValue(field: DynamicField): number | null {
-    return getTimeMinute(this.form?.get(field.name)?.value);
+  getTimeMinuteValue(field: DynamicField, instanceId?: string): number | null {
+    const control = instanceId
+      ? this.getRepeaterInstanceControl(field, instanceId)
+      : this.form?.get(field.name);
+    return getTimeMinute(control?.value);
   }
 
-  getTimeMeridiemValue(field: DynamicField): TimeMeridiem | null {
-    return getTimeMeridiem(this.form?.get(field.name)?.value);
+  getTimeMeridiemValue(
+    field: DynamicField,
+    instanceId?: string,
+  ): TimeMeridiem | null {
+    const control = instanceId
+      ? this.getRepeaterInstanceControl(field, instanceId)
+      : this.form?.get(field.name);
+    return getTimeMeridiem(control?.value);
   }
 
-  getTimeInputValue(field: DynamicField): string {
-    return normalizeTimeFieldValue(this.form?.get(field.name)?.value) ?? '';
+  getTimeInputValue(field: DynamicField, instanceId?: string): string {
+    const control = instanceId
+      ? this.getRepeaterInstanceControl(field, instanceId)
+      : this.form?.get(field.name);
+    return normalizeTimeFieldValue(control?.value) ?? '';
   }
 
-  onTime24Input(event: Event, field: DynamicField): void {
+  onTime24Input(event: Event, field: DynamicField, instanceId?: string): void {
     if (this.isFieldDisabled(field)) {
       return;
     }
 
-    const control = this.form?.get(field.name);
+    const control = instanceId
+      ? this.getRepeaterInstanceControl(field, instanceId)
+      : this.form?.get(field.name);
     if (!control || control.disabled) {
       return;
     }
@@ -1109,12 +1223,15 @@ export class DynamicFormComponent implements OnDestroy {
     field: DynamicField,
     part: 'hour' | 'minute' | 'meridiem',
     raw: string | number,
+    instanceId?: string,
   ): void {
     if (this.isFieldDisabled(field)) {
       return;
     }
 
-    const control = this.form?.get(field.name);
+    const control = instanceId
+      ? this.getRepeaterInstanceControl(field, instanceId)
+      : this.form?.get(field.name);
     if (!control || control.disabled) {
       return;
     }
@@ -1138,12 +1255,14 @@ export class DynamicFormComponent implements OnDestroy {
     this.cdr.markForCheck();
   }
 
-  clearTimeValue(field: DynamicField): void {
+  clearTimeValue(field: DynamicField, instanceId?: string): void {
     if (this.isFieldDisabled(field)) {
       return;
     }
 
-    const control = this.form?.get(field.name);
+    const control = instanceId
+      ? this.getRepeaterInstanceControl(field, instanceId)
+      : this.form?.get(field.name);
     if (!control || control.disabled) {
       return;
     }
@@ -1229,16 +1348,25 @@ export class DynamicFormComponent implements OnDestroy {
     this.cdr.detectChanges();
   }
 
-  getDateFieldValue(field: DynamicField): string | null {
-    const raw = this.form?.get(field.name)?.value;
+  getDateFieldValue(field: DynamicField, instanceId?: string): string | null {
+    const control = instanceId
+      ? this.getRepeaterInstanceControl(field, instanceId)
+      : this.form?.get(field.name);
+    const raw = control?.value;
     if (raw == null || raw === '') {
       return null;
     }
     return String(raw);
   }
 
-  onDateFieldChange(dateStr: string | null, field: DynamicField): void {
-    const control = this.form?.get(field.name);
+  onDateFieldChange(
+    dateStr: string | null,
+    field: DynamicField,
+    instanceId?: string,
+  ): void {
+    const control = instanceId
+      ? this.getRepeaterInstanceControl(field, instanceId)
+      : this.form?.get(field.name);
     if (!control || control.disabled) {
       return;
     }
@@ -1295,9 +1423,11 @@ export class DynamicFormComponent implements OnDestroy {
     this.cdr.markForCheck();
   }
 
-  onNumberInput(event: Event, field: DynamicField): void {
+  onNumberInput(event: Event, field: DynamicField, instanceId?: string): void {
     const input = event.target as HTMLInputElement;
-    const control = this.form?.get(field.name);
+    const control = instanceId
+      ? this.getRepeaterInstanceControl(field, instanceId)
+      : this.form?.get(field.name);
     if (!control || control.disabled) {
       return;
     }
@@ -1661,7 +1791,9 @@ export class DynamicFormComponent implements OnDestroy {
       field.type === 'signature' ||
       field.type === 'textarea' ||
       field.type === 'range' ||
-      field.label === 'Availability Days'
+      field.label === 'Availability Days' ||
+      // Repeater instances wrap across the row; keep the parent shell full-width.
+      this.isRuntimeRepeaterField(field)
     );
   }
 
@@ -1716,8 +1848,13 @@ export class DynamicFormComponent implements OnDestroy {
     queueMicrotask(() => {
       this.sortedFields.set(sorted);
       this.selectSearchQueries.set({});
-      this.form = this.fb.group(buildDynamicFormGroupConfig(this.fb, sorted));
+      this.form = this.fb.group(
+        buildDynamicFormGroupConfig(this.fb, sorted, {
+          expandRepeaters: !this.typeformMode(),
+        }),
+      );
       this.patchPreservedValuesByFieldId(preservedValues, sorted);
+      this.syncAllRepeaterControls();
       this.imageUploading.set({});
       this.signatureUploading.set({});
       this.rebuildAnswerProtectedFieldIds(preservedValues, sorted);
@@ -1728,11 +1865,65 @@ export class DynamicFormComponent implements OnDestroy {
       // when an active setValue rule targets the same field.
       this.applyDynamicDefaultValues();
       this.refreshConditionalEffects();
+      this.syncAllRepeaterControls();
       this.emitNormalizedValue();
       this.formReady.set(true);
       this.cdr.markForCheck();
       queueMicrotask(() => this.syncSignaturePadsFromValues());
     });
+  }
+
+  /**
+   * Keep nested repeater FormGroups aligned with selected source item ids.
+   * Values are keyed by source option/record id — never by array index.
+   */
+  private syncAllRepeaterControls(): void {
+    if (!this.form || this.typeformMode()) {
+      return;
+    }
+
+    const effects = this.conditionalEffects();
+    let changed = false;
+
+    for (const field of this.sortedFields()) {
+      if (!this.isRuntimeRepeaterField(field)) {
+        continue;
+      }
+
+      const group = this.form.get(field.name);
+      if (!(group instanceof FormGroup)) {
+        continue;
+      }
+
+      const config = normalizeRepeaterConfig(field.repeaterConfig);
+      if (!config) {
+        continue;
+      }
+
+      const source = this.sortedFields().find(
+        (item) => item.id === config.sourceFieldId,
+      );
+      const selectedIds = source
+        ? extractSelectedSourceIds(this.form.get(source.name)?.value)
+        : [];
+      const effect = effects[field.id];
+      const didChange = syncRepeaterFormGroup(group, field, selectedIds, {
+        required: effect?.required ?? !!field.required,
+        visible: effect?.visible ?? field.isShow !== false,
+        savedAnswers: isRepeaterAnswerMap(field.value)
+          ? field.value
+          : isRepeaterAnswerMap(field.defaultValue)
+            ? field.defaultValue
+            : normalizeRepeaterAnswerMap(group.value),
+      });
+      if (didChange) {
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      this.cdr.markForCheck();
+    }
   }
 
   /**
@@ -1845,6 +2036,13 @@ export class DynamicFormComponent implements OnDestroy {
           if (skip.has(field.id) || this.userEditedFieldIds.has(field.id)) {
             return false;
           }
+          // Phase 2: Dynamic Default Value does not resolve per repeater instance.
+          if (
+            !this.typeformMode() &&
+            isConfiguredRuntimeRepeaterField(field)
+          ) {
+            return false;
+          }
           const control = this.form.get(field.name || '');
           if (!control) {
             return false;
@@ -1944,9 +2142,11 @@ export class DynamicFormComponent implements OnDestroy {
         // Capture user edits before auto-population so target edits stay protected
         // while source edits can still drive dependent defaults.
         this.captureUserEditedFieldsFromControls();
+        this.syncAllRepeaterControls();
         this.applyDynamicDefaultValues();
         // Set Value runs after dynamic defaults so active conditional actions win.
         this.refreshConditionalEffects();
+        this.syncAllRepeaterControls();
         this.emitNormalizedValue();
         this.cdr.markForCheck();
       },
@@ -1998,13 +2198,36 @@ export class DynamicFormComponent implements OnDestroy {
           disabled: field.isReadonly === true,
         };
 
-        control.setValidators(
-          getFieldValidators(field, {
-            required: effect.required,
-            visible: effect.visible,
-          }),
-        );
-        control.updateValueAndValidity({ emitEvent: false });
+        if (this.isRuntimeRepeaterField(field) && control instanceof FormGroup) {
+          // Keep parent selection-required validator; never apply scalar field validators
+          // against the map FormGroup.
+          syncRepeaterFormGroup(
+            control,
+            field,
+            (() => {
+              const config = normalizeRepeaterConfig(field.repeaterConfig);
+              const source = config
+                ? fields.find((item) => item.id === config.sourceFieldId)
+                : undefined;
+              return source
+                ? extractSelectedSourceIds(this.form.get(source.name)?.value)
+                : Object.keys(control.controls);
+            })(),
+            {
+              required: effect.required,
+              visible: effect.visible,
+              savedAnswers: control.value,
+            },
+          );
+        } else {
+          control.setValidators(
+            getFieldValidators(field, {
+              required: effect.required,
+              visible: effect.visible,
+            }),
+          );
+          control.updateValueAndValidity({ emitEvent: false });
+        }
 
         const shouldDisable = effect.disabled || !effect.visible;
         if (shouldDisable && control.enabled) {
@@ -2088,6 +2311,24 @@ export class DynamicFormComponent implements OnDestroy {
 
     const control = this.form.get(field.name);
     if (!control) {
+      return;
+    }
+
+    // Parent-level Set Value: only apply map-shaped values onto repeater FormGroups.
+    if (this.isRuntimeRepeaterField(field) && control instanceof FormGroup) {
+      if (!isRepeaterAnswerMap(appliedValue)) {
+        return;
+      }
+      const nextMap = normalizeRepeaterAnswerMap(appliedValue);
+      if (setValuesEqual(control.value, nextMap)) {
+        return;
+      }
+      for (const [itemId, itemValue] of Object.entries(nextMap)) {
+        if (control.contains(itemId)) {
+          control.get(itemId)?.setValue(itemValue, { emitEvent: false });
+        }
+      }
+      valuesByFieldId[field.id] = control.getRawValue();
       return;
     }
 

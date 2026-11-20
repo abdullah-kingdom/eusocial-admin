@@ -125,12 +125,23 @@
             class="regular-form-shell__mode-btn"
             [class.regular-form-shell__mode-btn--active]="isManualMode()"
             [attr.aria-pressed]="isManualMode()"
+            [disabled]="!voiceReplySupported()"
+            [attr.title]="
+              voiceReplySupported()
+                ? null
+                : 'Voice Reply is unavailable because this form includes repeater fields'
+            "
             (click)="setInteractionMode('manual')"
           >
             Voice Reply
           </button>
         </div>
       </div>
+      @if (!voiceReplySupported()) {
+        <p class="regular-form-shell__mode-note m-0 px-4 pb-3 text-xs text-[#6F6F6F] font-ibm sm:px-6">
+          This form includes repeater fields and must be completed using Regular Form. Voice Reply is not available.
+        </p>
+      }
     </header>
   }
 
