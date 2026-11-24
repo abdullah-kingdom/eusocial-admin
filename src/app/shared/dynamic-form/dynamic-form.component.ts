@@ -1253,7 +1253,12 @@ export class DynamicFormComponent implements OnDestroy {
       meridiem = String(raw).toUpperCase() === 'PM' ? 'PM' : 'AM';
     }
 
-    control.setValue(composeTimeFrom12h(hour, minute, meridiem));
+    const next = composeTimeFrom12h(hour, minute, meridiem);
+    if (next == null || normalizeTimeFieldValue(control.value) === next) {
+      return;
+    }
+
+    control.setValue(next);
     control.markAsDirty();
     control.markAsTouched();
     this.emitNormalizedValue();
@@ -2347,6 +2352,8 @@ export class DynamicFormComponent implements OnDestroy {
 
     control.setValue(appliedValue, { emitEvent: false });
     valuesByFieldId[field.id] = appliedValue;
+    // Time selects bind via [selected]; force OnPush to repaint after silent setValue.
+    this.cdr.markForCheck();
   }
 
   private needsRelatedRecords(

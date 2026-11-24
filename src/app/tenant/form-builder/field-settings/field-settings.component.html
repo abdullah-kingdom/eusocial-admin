@@ -1651,14 +1651,24 @@
                 @if (setValueSourceKind === 'fixed') {
                   <div>
                     <label class="mb-1.5 block text-xs font-medium text-gray-600">Value</label>
-                    <input
-                      type="text"
-                      class="w-full rounded-lg border border-[#BDBDBD] bg-white px-3 py-2.5 text-sm text-[#161616] placeholder:text-gray-400 focus:border-[#ff9015] focus:outline-none focus:shadow-[0_0_0_3px_rgba(255,144,21,0.12)] disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
-                      [ngModel]="setValueFixedValue"
-                      (ngModelChange)="onSetValueFixedValueChange($event)"
-                      [disabled]="!isFieldEditable"
-                      placeholder="Enter a value"
-                    />
+                    @if (isTimeField) {
+                      <app-time-field-input
+                        inputId="condition-set-value-time"
+                        [value]="setValueFixedTimeValue"
+                        [timeFormat]="timeFormatValue"
+                        [disabled]="!isFieldEditable"
+                        (valueChange)="onSetValueFixedValueChange($event)"
+                      ></app-time-field-input>
+                    } @else {
+                      <input
+                        type="text"
+                        class="w-full rounded-lg border border-[#BDBDBD] bg-white px-3 py-2.5 text-sm text-[#161616] placeholder:text-gray-400 focus:border-[#ff9015] focus:outline-none focus:shadow-[0_0_0_3px_rgba(255,144,21,0.12)] disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+                        [ngModel]="setValueFixedValue"
+                        (ngModelChange)="onSetValueFixedValueChange($event)"
+                        [disabled]="!isFieldEditable"
+                        placeholder="Enter a value"
+                      />
+                    }
                   </div>
                 }
 
@@ -2812,14 +2822,14 @@
       placeholder="Select date"
     />
 
-    <input
+    <app-time-field-input
       *ngIf="isTimeField"
-      type="time"
-      [ngModel]="configuredValueText"
-      (ngModelChange)="onConfiguredValueTextChange($event)"
+      inputId="field-default-time"
+      [value]="configuredValueText || null"
+      [timeFormat]="timeFormatValue"
       [disabled]="!isFieldEditable"
-      class="w-full rounded-md border border-slate-200 px-3 py-2 text-sm focus:border-[#0054AC] focus:outline-none focus:ring-1 focus:ring-[#0054AC] disabled:cursor-not-allowed disabled:bg-slate-100"
-    />
+      (valueChange)="onConfiguredTimeValueChange($event)"
+    ></app-time-field-input>
 
     <!-- Static / radio / checkbox option-based -->
     <ng-container *ngIf="isStaticOptionValueField">

@@ -128,13 +128,12 @@
                               class="time-field__part h-9 w-[3.75rem] appearance-none border-0 bg-transparent px-1 text-center text-sm font-semibold leading-9 text-slate-700 outline-none"
                               [id]="field.id + '__' + item.id + '-hour'"
                               [disabled]="isFieldDisabled(field)"
-                              [value]="getTimeHour12Value(field, item.id) ?? ''"
                               (change)="onTime12PartChange(field, 'hour', $any($event.target).value, item.id)"
                               aria-label="Hour"
                             >
-                              <option value="" disabled>HH</option>
+                              <option value="" disabled [selected]="getTimeHour12Value(field, item.id) == null">HH</option>
                               @for (hour of getTimeHourOptions(); track hour) {
-                                <option [value]="hour">
+                                <option [value]="hour" [selected]="getTimeHour12Value(field, item.id) === hour">
                                   {{ hour < 10 ? '0' + hour : hour }}
                                 </option>
                               }
@@ -149,13 +148,12 @@
                               class="time-field__part h-9 w-[3.75rem] appearance-none border-0 bg-transparent px-1 text-center text-sm font-semibold leading-9 text-slate-700 outline-none"
                               [id]="field.id + '__' + item.id + '-minute'"
                               [disabled]="isFieldDisabled(field)"
-                              [value]="getTimeMinuteValue(field, item.id) ?? ''"
                               (change)="onTime12PartChange(field, 'minute', $any($event.target).value, item.id)"
                               aria-label="Minute"
                             >
-                              <option value="" disabled>MM</option>
+                              <option value="" disabled [selected]="getTimeMinuteValue(field, item.id) == null">MM</option>
                               @for (minute of getTimeMinuteOptions(); track minute) {
-                                <option [value]="minute">
+                                <option [value]="minute" [selected]="getTimeMinuteValue(field, item.id) === minute">
                                   {{ minute < 10 ? '0' + minute : minute }}
                                 </option>
                               }
@@ -167,13 +165,12 @@
                               class="time-field__part h-9 w-[3.75rem] appearance-none border-0 bg-transparent px-1 text-center text-sm font-semibold leading-9 text-slate-700 outline-none"
                               [id]="field.id + '__' + item.id + '-meridiem'"
                               [disabled]="isFieldDisabled(field)"
-                              [value]="getTimeMeridiemValue(field, item.id) ?? ''"
                               (change)="onTime12PartChange(field, 'meridiem', $any($event.target).value, item.id)"
                               aria-label="AM or PM"
                             >
-                              <option value="" disabled>—</option>
+                              <option value="" disabled [selected]="getTimeMeridiemValue(field, item.id) == null">—</option>
                               @for (meridiem of getTimeMeridiemOptions(); track meridiem) {
-                                <option [value]="meridiem">{{ meridiem }}</option>
+                                <option [value]="meridiem" [selected]="getTimeMeridiemValue(field, item.id) === meridiem">{{ meridiem }}</option>
                               }
                             </select>
                           </div>
@@ -439,13 +436,12 @@
                       class="time-field__part h-9 w-[3.75rem] appearance-none border-0 bg-transparent px-1 text-center text-sm font-semibold leading-9 text-slate-700 outline-none"
                       [id]="field.id + '-hour'"
                       [disabled]="isFieldDisabled(field)"
-                      [value]="getTimeHour12Value(field) ?? ''"
                       (change)="onTime12PartChange(field, 'hour', $any($event.target).value)"
                       aria-label="Hour"
                     >
-                      <option value="" disabled>HH</option>
+                      <option value="" disabled [selected]="getTimeHour12Value(field) == null">HH</option>
                       @for (hour of getTimeHourOptions(); track hour) {
-                        <option [value]="hour">
+                        <option [value]="hour" [selected]="getTimeHour12Value(field) === hour">
                           {{ hour < 10 ? '0' + hour : hour }}
                         </option>
                       }
@@ -460,13 +456,12 @@
                       class="time-field__part h-9 w-[3.75rem] appearance-none border-0 bg-transparent px-1 text-center text-sm font-semibold leading-9 text-slate-700 outline-none"
                       [id]="field.id + '-minute'"
                       [disabled]="isFieldDisabled(field)"
-                      [value]="getTimeMinuteValue(field) ?? ''"
                       (change)="onTime12PartChange(field, 'minute', $any($event.target).value)"
                       aria-label="Minute"
                     >
-                      <option value="" disabled>MM</option>
+                      <option value="" disabled [selected]="getTimeMinuteValue(field) == null">MM</option>
                       @for (minute of getTimeMinuteOptions(); track minute) {
-                        <option [value]="minute">
+                        <option [value]="minute" [selected]="getTimeMinuteValue(field) === minute">
                           {{ minute < 10 ? '0' + minute : minute }}
                         </option>
                       }
@@ -478,13 +473,12 @@
                       class="time-field__part h-9 w-[3.75rem] appearance-none border-0 bg-transparent px-1 text-center text-sm font-semibold leading-9 text-slate-700 outline-none"
                       [id]="field.id + '-meridiem'"
                       [disabled]="isFieldDisabled(field)"
-                      [value]="getTimeMeridiemValue(field) ?? ''"
                       (change)="onTime12PartChange(field, 'meridiem', $any($event.target).value)"
                       aria-label="AM or PM"
                     >
-                      <option value="" disabled>—</option>
+                      <option value="" disabled [selected]="getTimeMeridiemValue(field) == null">—</option>
                       @for (meridiem of getTimeMeridiemOptions(); track meridiem) {
-                        <option [value]="meridiem">{{ meridiem }}</option>
+                        <option [value]="meridiem" [selected]="getTimeMeridiemValue(field) === meridiem">{{ meridiem }}</option>
                       }
                     </select>
                   </div>
