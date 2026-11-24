@@ -219,6 +219,11 @@ export class DynamicFormComponent implements OnDestroy {
    * exactly as before, so every other consumer is unaffected.
    */
   readonly layoutSections = input<DynamicFormSectionLayout[]>([]);
+  /**
+   * Setup User, Item, and Vendor forms: use each field's stored width
+   * (1/3, 1/2, or full) for every field type. Left off everywhere else.
+   */
+  readonly honorFieldWidth = input(false);
   readonly valueChange = output<DynamicFormValue>();
 
   /**
@@ -1786,6 +1791,10 @@ export class DynamicFormComponent implements OnDestroy {
   }
 
   isFullWidthField(field: DynamicField): boolean {
+    if (this.honorFieldWidth() && this.isSectionedLayout()) {
+      return false;
+    }
+
     return (
       field.type === 'image' ||
       field.type === 'signature' ||

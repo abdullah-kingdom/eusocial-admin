@@ -3,6 +3,7 @@ import {
   Component,
   DestroyRef,
   OnDestroy,
+  computed,
   effect,
   inject,
   input,
@@ -13,9 +14,11 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize } from 'rxjs';
 import { DynamicField } from '../../../../interfaces/dynamic-field';
 import { shouldIncludeFieldInRuntimeForm } from '../../../../shared/conditional-logic';
+import { DynamicFormSectionLayout } from '../../../../shared/dynamic-form/dynamic-form.component';
 import { FormField } from '../../../form-builder/models/form-field.model';
 import { normalizeFieldOrder } from '../../../form-builder/utils/form-field.factory';
 import { FormStorageService } from '../../services/form-storage.service';
+import { buildDynamicLayoutSections } from '../../utils/setup-form-layout.utils';
 import { loadDynamicDropdownOptions, shouldFetchSelectOptionsFromApi } from '../../../../shared/dynamic-listing/dynamic-field-options.loader';
 
 const CLOSE_ANIMATION_MS = 280;
@@ -33,6 +36,13 @@ export class FormPreviewModalComponent implements OnDestroy {
 
   readonly isOpen = input(false);
   readonly formFields = input<FormField[]>([]);
+  /**
+   * Setup builders pass the saved row layout so preview uses the same
+   * 12-column widths. Omitted hosts keep the classic two-column preview.
+   */
+  readonly storedSections = input<unknown>(null);
+  /** Match Setup fill forms: every field type uses its stored width. */
+  readonly honorFieldWidth = input(false);
   readonly closed = output<void>();
 
   readonly isVisible = signal(false);
@@ -40,6 +50,14 @@ export class FormPreviewModalComponent implements OnDestroy {
   readonly previewFields = signal<DynamicField[]>([]);
   readonly loading = signal(false);
   readonly formReady = signal(false);
+  readonly previewLayoutSections = computed((): DynamicFormSectionLayout[] => {
+    const stored = this.storedSections();
+    const fields = this.previewFields();
+    if (stored == null) {
+      return [];
+    }
+    return buildDynamicLayoutSections(fields, stored);
+  });
 
   private closeTimer: ReturnType<typeof setTimeout> | null = null;
   private fieldsCacheKey = '';
@@ -188,7 +206,7 @@ export class FormPreviewModalComponent implements OnDestroy {
     return this.buildPreviewFields(formFields)
       .map(
         (field) =>
-          `${field.id}|${field.label}|${field.type}|${field.required}|${field.placeholder}|${field.selectionType || 'single'}|${JSON.stringify(field.options)}|${JSON.stringify(field.optionSource)}|${JSON.stringify(field.condition ?? null)}`,
+          `${field.id}|${field.width ?? ''}|${field.label}|${field.type}|${field.required}|${field.placeholder}|${field.selectionType || 'single'}|${JSON.stringify(field.options)}|${JSON.stringify(field.optionSource)}|${JSON.stringify(field.condition ?? null)}`,
       )
       .join('::');
   }

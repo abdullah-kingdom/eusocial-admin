@@ -53,7 +53,11 @@
             [class.form-preview-content--ready]="formReady()"
           >
             @if (formReady()) {
-              <app-dynamic-form [fields]="previewFields()"></app-dynamic-form>
+              <app-dynamic-form
+                [fields]="previewFields()"
+                [layoutSections]="previewLayoutSections()"
+                [honorFieldWidth]="honorFieldWidth()"
+              ></app-dynamic-form>
             }
           </div>
         }

@@ -18,6 +18,7 @@ import {
 import {
   clampWidthForRemaining,
   createSetupRowId,
+  defaultSetupNewFieldWidth,
   setupRowAddColumnFlexBasis,
   setupRowCanAddColumn,
   setupRowUsedFlexBasis,
@@ -223,6 +224,9 @@ export class SetupFormLayoutCanvasComponent {
     if (supportsPlaceholderAutoGeneration(field.type)) {
       field.placeholder = buildPlaceholderFromLabel(field.label);
     }
+    // New palette fields default to 1/3. Existing canvas moves return above
+    // and keep the width already stored on the field.
+    field.width = defaultSetupNewFieldWidth();
     return field;
   }
 
