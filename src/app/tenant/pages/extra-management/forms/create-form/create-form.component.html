@@ -748,18 +748,33 @@
           </div>
         } @else {
           <div class="mx-auto flex w-full max-w-4xl flex-col gap-4">
+            <div
+              cdkDropList
+              id="form-template-sections-list"
+              class="form-template-sections-list flex flex-col gap-4"
+              [cdkDropListData]="sections()"
+              [cdkDropListEnterPredicate]="sectionDropListEnterPredicate"
+              (cdkDropListDropped)="onSectionsDrop($event)"
+            >
             @for (section of sections(); track section.id) {
               @if (section.type === 'custom') {
                 @let customSection = asCustomSection(section);
                 @let sectionCollapsed = isSectionCollapsed(customSection.id);
                 @let hasSectionFields = sectionHasFields(customSection);
 
-                <section class="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm">
+                <section
+                  cdkDrag
+                  cdkDragLockAxis="y"
+                  [cdkDragData]="customSection"
+                  class="form-template-section-drag overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm"
+                >
+                  <div *cdkDragPlaceholder class="form-template-section-drag-placeholder"></div>
                   <!-- Section header -->
                   <div
                     class="flex items-center gap-2 border-b border-[#E5E7EB] px-3 py-3 sm:gap-3 sm:px-4"
                   >
                     <span
+                      cdkDragHandle
                       class="inline-flex shrink-0 cursor-grab text-[#9CA3AF] active:cursor-grabbing"
                       aria-hidden="true"
                       title="Drag section"
@@ -949,6 +964,7 @@
                 </section>
               }
             }
+            </div>
 
             <button
               type="button"
