@@ -1,0 +1,77 @@
+<div class="flex flex-wrap items-center gap-2">
+  @if (format === '12') {
+    <div
+      class="inline-flex h-11 items-center rounded-xl border border-slate-200 bg-white px-1 shadow-sm transition-all focus-within:border-[#ea580c] focus-within:shadow-[0_0_0_4px_rgba(234,88,12,0.12)]"
+      [class.opacity-60]="disabled"
+    >
+      <select
+        class="time-field-input__part h-9 w-[3.75rem] appearance-none border-0 bg-transparent px-1 text-center text-sm font-semibold leading-9 text-slate-700 outline-none"
+        [id]="inputId + '-hour'"
+        [disabled]="disabled"
+        (change)="onHourChange($any($event.target).value)"
+        aria-label="Hour"
+      >
+        <option value="" disabled [selected]="hour12 == null">HH</option>
+        @for (hour of hourOptions; track hour) {
+          <option [value]="hour" [selected]="hour12 === hour">
+            {{ hour < 10 ? '0' + hour : hour }}
+          </option>
+        }
+      </select>
+
+      <span
+        class="select-none px-0.5 text-base font-semibold leading-none text-slate-300"
+        aria-hidden="true"
+      >:</span>
+
+      <select
+        class="time-field-input__part h-9 w-[3.75rem] appearance-none border-0 bg-transparent px-1 text-center text-sm font-semibold leading-9 text-slate-700 outline-none"
+        [id]="inputId + '-minute'"
+        [disabled]="disabled"
+        (change)="onMinuteChange($any($event.target).value)"
+        aria-label="Minute"
+      >
+        <option value="" disabled [selected]="minute == null">MM</option>
+        @for (minuteOption of minuteOptions; track minuteOption) {
+          <option [value]="minuteOption" [selected]="minute === minuteOption">
+            {{ minuteOption < 10 ? '0' + minuteOption : minuteOption }}
+          </option>
+        }
+      </select>
+
+      <div class="mx-1 h-5 w-px bg-slate-200" aria-hidden="true"></div>
+
+      <select
+        class="time-field-input__part h-9 w-[3.75rem] appearance-none border-0 bg-transparent px-1 text-center text-sm font-semibold leading-9 text-slate-700 outline-none"
+        [id]="inputId + '-meridiem'"
+        [disabled]="disabled"
+        (change)="onMeridiemChange($any($event.target).value)"
+        aria-label="AM or PM"
+      >
+        <option value="" disabled [selected]="meridiem == null">—</option>
+        @for (option of meridiemOptions; track option) {
+          <option [value]="option" [selected]="meridiem === option">{{ option }}</option>
+        }
+      </select>
+    </div>
+  } @else {
+    <input
+      class="time-field-input__native w-full max-w-[11rem] rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 shadow-sm outline-none transition focus:border-[#ea580c] focus:shadow-[0_0_0_4px_rgba(234,88,12,0.12)] disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+      type="time"
+      [id]="inputId"
+      [disabled]="disabled"
+      [value]="normalizedValue"
+      (input)="onNative24Input($any($event.target).value)"
+    />
+  }
+
+  @if (showClear && normalizedValue && !disabled) {
+    <button
+      type="button"
+      class="text-xs font-medium text-[#ea580c] hover:underline"
+      (click)="clear()"
+    >
+      Clear
+    </button>
+  }
+</div>

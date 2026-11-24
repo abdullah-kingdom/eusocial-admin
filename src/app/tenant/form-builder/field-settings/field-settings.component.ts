@@ -127,7 +127,11 @@ import {
   sanitizeDateBounds,
   sanitizeRangeBounds,
 } from '../../../shared/dynamic-form/range-field.utils';
-import { normalizeTimeFieldFormat } from '../../../shared/dynamic-form/time-field.utils';
+import {
+  formatTimeFieldDisplay,
+  normalizeTimeFieldFormat,
+  normalizeTimeFieldValue,
+} from '../../../shared/dynamic-form/time-field.utils';
 import {
   getDefaultUnitCode,
   getUnitsForFieldType,
@@ -1040,6 +1044,10 @@ export class FieldSettingsComponent implements OnDestroy {
       return '';
     }
     const value = this._field?.defaultValue;
+    if (this.isTimeField) {
+      const display = formatTimeFieldDisplay(value, this.timeFormatValue);
+      return display === '—' ? '' : display;
+    }
     if (Array.isArray(value)) {
       return value.map((item) => String(item)).filter(Boolean).join(', ');
     }
@@ -1735,6 +1743,14 @@ export class FieldSettingsComponent implements OnDestroy {
       return;
     }
     this.writeConfiguredDefaultValue(value == null ? '' : value);
+  }
+
+  /** Time Picker default: store HH:mm (24h), same as Form Preview Time field. */
+  onConfiguredTimeValueChange(value: string | null): void {
+    if (!this._field || !this.isFieldEditable || !this.supportsConfiguredValue) {
+      return;
+    }
+    this.writeConfiguredDefaultValue(normalizeTimeFieldValue(value) ?? '');
   }
 
   isConfiguredMultiValueSelected(optionValue: string | number): boolean {
@@ -3066,6 +3082,12 @@ export class FieldSettingsComponent implements OnDestroy {
     return source.kind === 'fixed' ? (source.value ?? '') : '';
   }
 
+  /** Fixed Set Value for Time targets — normalized HH:mm or null for the picker. */
+  get setValueFixedTimeValue(): string | null {
+    const raw = this.setValueFixedValue;
+    return normalizeTimeFieldValue(raw);
+  }
+
   get setValueFieldId(): string {
     const source = this.setValueSource;
     return source.kind === 'field' ? source.fieldId : '';
@@ -3256,7 +3278,9 @@ export class FieldSettingsComponent implements OnDestroy {
       return;
     }
 
-    this.patchSetValueSource({ kind: 'fixed', value });
+    const next =
+      this.isTimeField ? (normalizeTimeFieldValue(value) ?? '') : value;
+    this.patchSetValueSource({ kind: 'fixed', value: next });
   }
 
   onSetValueFieldChange(fieldId: string): void {
