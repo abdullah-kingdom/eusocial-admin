@@ -26,6 +26,7 @@ import { normalizeFieldTypeName } from './field-type.utils';
 import { readOptionSourceFromField } from './option-source.utils';
 import { resolveBuilderLocationKind } from './location-field-dependencies.utils';
 import { sanitizeImageFieldConfig } from './image-field.utils';
+import { cloneRepeaterConfig } from './repeater-field.utils';
 
 export function generateFieldId(): string {
   return `fld_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -226,6 +227,9 @@ export function sanitizeField(
     defaultValueSource: field.defaultValueSource
       ? JSON.parse(JSON.stringify(field.defaultValueSource))
       : null,
+    // Keep enabled repeaterConfig through builder updates so reopening settings
+    // can restore the previously selected sourceFieldId (Preview already used it).
+    repeaterConfig: cloneRepeaterConfig(field.repeaterConfig),
     validations: field.validations ? { ...field.validations } : {},
     width: field.width ?? 12,
     order: order ?? field.order,
