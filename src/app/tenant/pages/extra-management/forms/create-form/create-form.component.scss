@@ -4,6 +4,33 @@
   width: 100%;
 }
 
+/* Section reorder (existing grip handle) — functional CDK affordances only. */
+.form-template-sections-list {
+  &.cdk-drop-list-dragging .form-template-section-drag:not(.cdk-drag-placeholder) {
+    transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+  }
+}
+
+.form-template-section-drag {
+  &.cdk-drag-preview {
+    box-sizing: border-box;
+    border-radius: 0.75rem;
+    box-shadow: 0 12px 28px -12px rgba(15, 23, 42, 0.35);
+  }
+
+  &.cdk-drag-animating {
+    transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+  }
+}
+
+.form-template-section-drag-placeholder {
+  min-height: 3.25rem;
+  border-radius: 0.75rem;
+  border: 1px dashed #d1d5db;
+  background: #fafafa;
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
 /* Soft enter when a wizard step mounts (tabs / Save & continue / back).
    Fill mode is backwards only. forwards/both would keep opacity (and
    transform) on this panel, and that opacity — even at 1 — is a stacking

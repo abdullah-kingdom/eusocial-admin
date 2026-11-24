@@ -20,7 +20,7 @@ import { CommonModule } from '@angular/common';
 import { FormBuilder, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
-import { CdkDragDrop, moveItemInArray } from '@angular/cdk/drag-drop';
+import { CdkDrag, CdkDragDrop, moveItemInArray } from '@angular/cdk/drag-drop';
 import { finalize, startWith, take } from 'rxjs';
 import { CreateFormCanDeactivate } from './create-form-can-deactivate.interface';
 import flatpickr from 'flatpickr';
@@ -100,6 +100,7 @@ import {
   hydrateFormTemplateDynamicSelectField,
   hydrateFormTemplateDynamicSelectOptions,
 } from '../utils/hydrate-dynamic-select-options.utils';
+import { reorderFormSections } from '../utils/reorder-form-sections.utils';
 import {
   clearDependentLocationOptions,
   getConfigFieldLocationKind,
@@ -2112,6 +2113,28 @@ export class CreateFormComponent implements OnInit, CreateFormCanDeactivate {
       }
       return next;
     });
+  }
+
+  /**
+   * Only Form Template sections may enter the section reorder list.
+   * Rejects field-palette / row-canvas drags so nested field DnD stays unchanged.
+   */
+  readonly sectionDropListEnterPredicate = (drag: CdkDrag) => {
+    const data = drag.data as FormSection | null | undefined;
+    return !!data && data.type === 'custom' && Array.isArray(data.rows);
+  };
+
+  /** Reorder complete sections via the existing header drag handle. */
+  onSectionsDrop(event: CdkDragDrop<FormSection[]>): void {
+    if (event.previousContainer !== event.container) {
+      return;
+    }
+    if (event.previousIndex === event.currentIndex) {
+      return;
+    }
+    this.sections.update((list) =>
+      reorderFormSections(list, event.previousIndex, event.currentIndex),
+    );
   }
 
   /** Duplicate a section (new ids for section, rows, and fields). */
