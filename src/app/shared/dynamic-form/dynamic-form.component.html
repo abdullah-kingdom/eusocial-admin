@@ -35,7 +35,7 @@
           class="field-shell"
         >
           <div class="form-group">
-          @if (field.type !== 'image' && !typeformMode()) {
+          @if (field.type !== 'image' && !typeformMode() && !isRuntimeRepeaterField(field)) {
             <label class="field-label" [attr.for]="field.id">
               {{ field.label }}
               @if (isFieldRequired(field)) {
@@ -45,6 +45,175 @@
           }
 
           <div class="field-control-stack">
+          @if (isRuntimeRepeaterField(field)) {
+            <div
+              class="repeater-field-stack"
+              [formGroupName]="field.name"
+              [attr.aria-label]="field.label"
+            >
+              @for (item of getRepeaterInstances(field); track item.id) {
+                <div class="repeater-instance">
+                  <label
+                    class="field-label"
+                    [attr.for]="field.id + '__' + item.id"
+                  >
+                    {{ item.label }}
+                    @if (isFieldRequired(field)) {
+                      <span class="field-required" aria-hidden="true">*</span>
+                    }
+                  </label>
+
+                  @switch (field.type) {
+                    @case ('text') {
+                      <input
+                        class="dynamic-control"
+                        type="text"
+                        [id]="field.id + '__' + item.id"
+                        [formControlName]="item.id"
+                        [placeholder]="field.placeholder ?? ''"
+                        [attr.maxlength]="getCharacterLimit(field)"
+                      />
+                    }
+                    @case ('email') {
+                      <input
+                        class="dynamic-control"
+                        type="email"
+                        [id]="field.id + '__' + item.id"
+                        [formControlName]="item.id"
+                        [placeholder]="field.placeholder ?? ''"
+                      />
+                    }
+                    @case ('number') {
+                      <input
+                        class="dynamic-control"
+                        type="number"
+                        [id]="field.id + '__' + item.id"
+                        [formControlName]="item.id"
+                        [placeholder]="field.placeholder ?? ''"
+                        [attr.step]="getNumberStep(field)"
+                        (input)="onNumberInput($event, field, item.id)"
+                      />
+                    }
+                    @case ('textarea') {
+                      <textarea
+                        class="dynamic-control min-h-[120px] resize-none"
+                        [id]="field.id + '__' + item.id"
+                        [formControlName]="item.id"
+                        [placeholder]="field.placeholder ?? ''"
+                        [attr.maxlength]="getCharacterLimit(field)"
+                        rows="3"
+                      ></textarea>
+                    }
+                    @case ('date') {
+                      <input
+                        class="dynamic-control"
+                        type="text"
+                        appFlatpickr
+                        [id]="field.id + '__' + item.id"
+                        [placeholder]="field.placeholder || field.label || 'Select date'"
+                        [fpValue]="getDateFieldValue(field, item.id)"
+                        [fpMinDate]="field.minDate || null"
+                        [fpMaxDate]="field.maxDate || null"
+                        [fpDisabled]="isFieldDisabled(field)"
+                        (fpChange)="onDateFieldChange($event, field, item.id)"
+                      />
+                    }
+                    @case ('time') {
+                      <div class="flex flex-wrap items-center gap-2">
+                        @if (getTimeFieldFormat(field) === '12') {
+                          <div
+                            class="inline-flex h-11 items-center rounded-xl border border-slate-200 bg-white px-1 shadow-sm transition-all focus-within:border-[#ea580c] focus-within:shadow-[0_0_0_4px_rgba(234,88,12,0.12)]"
+                          >
+                            <select
+                              class="time-field__part h-9 w-[3.75rem] appearance-none border-0 bg-transparent px-1 text-center text-sm font-semibold leading-9 text-slate-700 outline-none"
+                              [id]="field.id + '__' + item.id + '-hour'"
+                              [disabled]="isFieldDisabled(field)"
+                              [value]="getTimeHour12Value(field, item.id) ?? ''"
+                              (change)="onTime12PartChange(field, 'hour', $any($event.target).value, item.id)"
+                              aria-label="Hour"
+                            >
+                              <option value="" disabled>HH</option>
+                              @for (hour of getTimeHourOptions(); track hour) {
+                                <option [value]="hour">
+                                  {{ hour < 10 ? '0' + hour : hour }}
+                                </option>
+                              }
+                            </select>
+
+                            <span
+                              class="select-none px-0.5 text-base font-semibold leading-none text-slate-300"
+                              aria-hidden="true"
+                            >:</span>
+
+                            <select
+                              class="time-field__part h-9 w-[3.75rem] appearance-none border-0 bg-transparent px-1 text-center text-sm font-semibold leading-9 text-slate-700 outline-none"
+                              [id]="field.id + '__' + item.id + '-minute'"
+                              [disabled]="isFieldDisabled(field)"
+                              [value]="getTimeMinuteValue(field, item.id) ?? ''"
+                              (change)="onTime12PartChange(field, 'minute', $any($event.target).value, item.id)"
+                              aria-label="Minute"
+                            >
+                              <option value="" disabled>MM</option>
+                              @for (minute of getTimeMinuteOptions(); track minute) {
+                                <option [value]="minute">
+                                  {{ minute < 10 ? '0' + minute : minute }}
+                                </option>
+                              }
+                            </select>
+
+                            <div class="mx-1 h-5 w-px bg-slate-200" aria-hidden="true"></div>
+
+                            <select
+                              class="time-field__part h-9 w-[3.75rem] appearance-none border-0 bg-transparent px-1 text-center text-sm font-semibold leading-9 text-slate-700 outline-none"
+                              [id]="field.id + '__' + item.id + '-meridiem'"
+                              [disabled]="isFieldDisabled(field)"
+                              [value]="getTimeMeridiemValue(field, item.id) ?? ''"
+                              (change)="onTime12PartChange(field, 'meridiem', $any($event.target).value, item.id)"
+                              aria-label="AM or PM"
+                            >
+                              <option value="" disabled>—</option>
+                              @for (meridiem of getTimeMeridiemOptions(); track meridiem) {
+                                <option [value]="meridiem">{{ meridiem }}</option>
+                              }
+                            </select>
+                          </div>
+                        } @else {
+                          <input
+                            class="dynamic-control time-field__native"
+                            type="time"
+                            [id]="field.id + '__' + item.id"
+                            [disabled]="isFieldDisabled(field)"
+                            [value]="getTimeInputValue(field, item.id)"
+                            (input)="onTime24Input($event, field, item.id)"
+                          />
+                        }
+
+                        @if (getTimeInputValue(field, item.id) && !isFieldRequired(field) && !isFieldDisabled(field)) {
+                          <button
+                            type="button"
+                            class="text-xs font-medium text-[#ea580c] hover:underline"
+                            (click)="clearTimeValue(field, item.id)"
+                          >
+                            Clear
+                          </button>
+                        }
+                      </div>
+                    }
+                  }
+
+                  @if (getRepeaterInstanceErrorMessage(field, item.id, item.label); as instanceMsg) {
+                    <small class="field-error">
+                      {{ instanceMsg }}
+                    </small>
+                  }
+                </div>
+              } @empty {
+                <p class="repeater-field-stack__empty m-0 text-sm text-slate-500">
+                  Select items in the source field to enter values for {{ field.label }}.
+                </p>
+              }
+            </div>
+          } @else {
           @switch (field.type) {
             @case ('text') {
               @if (field.name === 'password') {
@@ -874,6 +1043,7 @@
                 </section>
               </div>
             }
+          }
           }
 
           @if (getErrorMessage(field); as msg) {

@@ -35,10 +35,10 @@ import { availableRowWidthPresetsForField } from '../../../../pages/extra-manage
 import {
   buildDefaultSetupSections,
   buildDynamicLayoutSections,
-  createSetupRowId,
   findSetupFieldRow,
   flattenSetupSections,
   hydrateSetupSections,
+  insertDuplicatedSetupField,
   removeFieldFromSetupSections,
   serializeSetupSections,
   setupRowCanAddColumn,
@@ -102,6 +102,11 @@ export class SetupVendorComponent {
 
   readonly formLayoutSections = computed(() =>
     buildDynamicLayoutSections(this.formFields(), this.fillLayoutStored()),
+  );
+
+  /** Row layout for the builder preview, so Width in row matches the canvas. */
+  readonly previewStoredSections = computed(() =>
+    serializeSetupSections(this.builderSections()),
   );
 
   readonly paletteConnectedDropLists = computed(() => {
@@ -379,32 +384,18 @@ export class SetupVendorComponent {
       return;
     }
 
-    const location = findSetupFieldRow(this.builderSections(), field.id);
     const result = duplicateFormField(field, this.builderSchema());
     if (!result.duplicate) {
       return;
     }
 
-    const sections = this.builderSections().map((section) => ({
-      ...section,
-      rows: section.rows.map((row) => ({ ...row, fields: [...row.fields] })),
-    }));
-
-    if (location) {
-      const section = sections.find((item) => item.id === location.sectionId);
-      const row = section?.rows.find((item) => item.id === location.rowId);
-      if (row) {
-        const index = row.fields.findIndex((item) => item.id === field.id);
-        row.fields.splice(index + 1, 0, result.duplicate);
-      }
-    } else if (sections[0]) {
-      sections[0].rows.push({
-        id: createSetupRowId(),
-        fields: [result.duplicate],
-      });
-    }
-
-    this.applyBuilderSections(sections);
+    this.applyBuilderSections(
+      insertDuplicatedSetupField(
+        this.builderSections(),
+        field.id,
+        result.duplicate,
+      ),
+    );
     this.onSelectField(result.duplicate);
   }
 

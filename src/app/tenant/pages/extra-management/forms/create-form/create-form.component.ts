@@ -81,6 +81,7 @@ import {
   summarizeRuleCard,
 } from '../../../../forms/logic-rules/logic-rule.utils';
 import { SectionFieldPreviewComponent } from '../components/section-field-preview/section-field-preview.component';
+import { formatConditionOptionDisplay } from '../utils/condition-option-label';
 import {
   availableRowWidthPresetsForField,
   builderWidthToPreset,
@@ -3191,14 +3192,7 @@ export class CreateFormComponent implements OnInit, CreateFormCanDeactivate {
     }
     const predicate = getPrimaryPredicate(logic);
     const operator = this.mapOperatorPhrase(predicate.operator);
-    const needsValue = !['isEmpty', 'isNotEmpty', 'checked', 'unchecked'].includes(
-      predicate.operator,
-    );
-    const valueText =
-      needsValue && predicate.value != null && String(predicate.value).trim() !== ''
-        ? ` ${String(predicate.value)}`
-        : '';
-    return `${operator}${valueText}`.trim();
+    return `${operator}${this.conditionCompareDisplay(predicate)}`.trim();
   }
 
   /** Logic map condition pill (e.g. "is above 5") — first rule only (legacy). */
@@ -3248,18 +3242,35 @@ export class CreateFormComponent implements OnInit, CreateFormCanDeactivate {
       this.logicSchemaFields().find((item) => item.id === predicate.fieldId)?.label ||
       'a field';
     const operator = this.mapOperatorPhrase(predicate.operator);
-    const needsValue = !['isEmpty', 'isNotEmpty', 'checked', 'unchecked'].includes(
-      predicate.operator,
-    );
-    const valueText =
-      needsValue && predicate.value != null && String(predicate.value).trim() !== ''
-        ? ` ${String(predicate.value)}`
-        : '';
     return {
       before: `${this.logicActionNarrativeForRule(logic)} when`,
       badge: source,
-      after: `${operator}${valueText}`.trim(),
+      after: `${operator}${this.conditionCompareDisplay(predicate)}`.trim(),
     };
+  }
+
+  /**
+   * Choice-field comparison text for the Logic & Automations modal.
+   * Shows the option label. The predicate value itself is left unchanged.
+   */
+  private conditionCompareDisplay(predicate: {
+    fieldId?: string;
+    operator: string;
+    value?: unknown;
+  }): string {
+    const needsValue = !['isEmpty', 'isNotEmpty', 'checked', 'unchecked'].includes(
+      predicate.operator,
+    );
+    if (!needsValue || predicate.value == null) {
+      return '';
+    }
+    if (!Array.isArray(predicate.value) && String(predicate.value).trim() === '') {
+      return '';
+    }
+
+    const source = this.logicSchemaFields().find((item) => item.id === predicate.fieldId);
+    const display = formatConditionOptionDisplay(source, predicate.value);
+    return display ? ` ${display}` : '';
   }
 
   /** List row summaries for every independent rule on a field. */

@@ -37,6 +37,11 @@ import {
   AssignmentFormMode,
   EmployeeInteractionMode,
 } from '../assignment-form-mode';
+import {
+  isRepeaterAnswerMap,
+  isRepeaterEnabled,
+  schemaHasEnabledRepeater,
+} from '../../../form-builder/utils/repeater-field.utils';
 
 export type { EmployeeInteractionMode, AssignmentFormMode } from '../assignment-form-mode';
 export type EmployeeFormFillMode = 'classic' | 'typeform';
@@ -127,6 +132,11 @@ export class EmployeeAssignmentComponent implements OnInit {
   readonly mergedFields = computed(() =>
     this.sections().flatMap((section) => section.fields),
   );
+  /** Voice Reply / Typeform is unsupported when any repeater field is enabled. */
+  readonly hasEnabledRepeater = computed(() =>
+    schemaHasEnabledRepeater(this.mergedFields()),
+  );
+  readonly voiceReplySupported = computed(() => !this.hasEnabledRepeater());
   readonly submittedAt = computed(() => {
     const detail = this.assignment();
     return detail ? readAssignmentSubmittedAt(detail) : null;
@@ -175,6 +185,17 @@ export class EmployeeAssignmentComponent implements OnInit {
     }
 
     if (mode === this.interactionMode()) {
+      return;
+    }
+
+    // Voice Reply (Typeform) cannot safely edit repeater answer maps in v1.
+    if (mode === 'manual' && this.hasEnabledRepeater()) {
+      this.toastr.warning(
+        'This assignment includes repeater fields and must be completed using Regular Form. Voice Reply is not available for this form.',
+      );
+      if (this.interactionMode() !== 'normal') {
+        this.interactionMode.set('normal');
+      }
       return;
     }
 
@@ -375,7 +396,22 @@ export class EmployeeAssignmentComponent implements OnInit {
     this.hydrateSections(detail)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: (sections) => this.sections.set(sections),
+        next: (sections) => {
+          this.sections.set(sections);
+          // Defensive: never leave a repeater assignment in Voice Reply / Typeform.
+          if (
+            this.canFill() &&
+            schemaHasEnabledRepeater(
+              sections.flatMap((section) => section.fields),
+            ) &&
+            this.interactionMode() === 'manual'
+          ) {
+            this.interactionMode.set('normal');
+            this.toastr.warning(
+              'This assignment includes repeater fields and must be completed using Regular Form.',
+            );
+          }
+        },
         error: () => {
           this.sections.set([]);
           this.formError.set('Unable to prepare the form fields for this assignment.');
@@ -467,9 +503,18 @@ export class EmployeeAssignmentComponent implements OnInit {
     return fields.map((field) => {
       const hasAnswer =
         !!field.id && Object.prototype.hasOwnProperty.call(answers, field.id);
-      const next: DynamicField = hasAnswer
-        ? { ...field, value: answers[field.id], defaultValue: answers[field.id] }
-        : field;
+      let next: DynamicField = field;
+      if (hasAnswer) {
+        // Repeater: restore the answer map on `value` only — keep schema static
+        // default so newly selected instances can still seed from it.
+        next = isRepeaterEnabled(field)
+          ? { ...field, value: answers[field.id] }
+          : {
+              ...field,
+              value: answers[field.id],
+              defaultValue: answers[field.id],
+            };
+      }
 
       return readonly ? { ...next, isReadonly: true } : next;
     });
@@ -560,7 +605,23 @@ export class EmployeeAssignmentComponent implements OnInit {
     }
 
     const captured = this.buildAnswersFromFields(form, this.mergedFields());
-    this.workingAnswers.update((current) => ({ ...current, ...captured }));
+    this.workingAnswers.update((current) => {
+      const next: Record<string, unknown> = { ...current, ...captured };
+
+      // Never let a scalar overwrite an ID-keyed repeater answer map.
+      for (const field of this.mergedFields()) {
+        if (!field.id || !isRepeaterEnabled(field)) {
+          continue;
+        }
+        const previous = current[field.id];
+        const incoming = next[field.id];
+        if (isRepeaterAnswerMap(previous) && !isRepeaterAnswerMap(incoming)) {
+          next[field.id] = previous;
+        }
+      }
+
+      return next;
+    });
   }
 
   private applyWorkingAnswersToSections(): void {

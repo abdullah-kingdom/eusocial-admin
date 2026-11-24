@@ -15,6 +15,10 @@ export function getDynamicFieldErrorMessage(
     return `${field.label} is required.`;
   }
 
+  if (control.errors['repeaterRequiredSelection']) {
+    return `${field.label} requires at least one selected item.`;
+  }
+
   if (control.errors['minFiles']) {
     const requiredCount = control.errors['minFiles'].required;
     return `${field.label} requires at least ${requiredCount} image${requiredCount === 1 ? '' : 's'}.`;

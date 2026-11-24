@@ -36,6 +36,8 @@
 <app-form-preview-modal
   [isOpen]="showPreviewModal()"
   [formFields]="builderSchema()"
+  [storedSections]="previewStoredSections()"
+  [honorFieldWidth]="true"
   (closed)="closePreviewModal()"
 ></app-form-preview-modal>
 
@@ -71,6 +73,7 @@
         <app-dynamic-form
           [fields]="formFields()"
           [layoutSections]="formLayoutSections()"
+          [honorFieldWidth]="true"
           [enableLocationDependencies]="true"
           (valueChange)="onDynamicFormChange($event)"
         ></app-dynamic-form>

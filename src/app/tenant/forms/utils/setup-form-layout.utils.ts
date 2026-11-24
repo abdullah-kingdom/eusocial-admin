@@ -3,6 +3,7 @@ import { generateFieldId } from '../../form-builder/utils/form-field.factory';
 import {
   largestFittingBuilderWidth,
   normalizeBuilderWidthUnits,
+  preferredNewFieldBuilderWidth,
   rowHasAvailableColumnSpace,
   rowRemainingGridUnits,
   ROW_WIDTH_UNITS,
@@ -289,6 +290,67 @@ export function setupRowAddColumnFlexBasis(row: SetupFormRow): string {
     return '0%';
   }
   return `calc(${(remaining / 12) * 100}% - 0.5rem)`;
+}
+
+/**
+ * Width-in-row for a field just created in the Setup User, Item, or Vendor
+ * builders. One-third (4 of 12) when the row can hold it.
+ * Saved fields are not passed through this helper.
+ */
+export function defaultSetupNewFieldWidth(remainingUnits?: number): number {
+  return remainingUnits == null
+    ? preferredNewFieldBuilderWidth()
+    : preferredNewFieldBuilderWidth(remainingUnits);
+}
+
+/**
+ * Place a duplicated field after its source.
+ * The copy keeps the source width. When that width does not fit, it starts
+ * the next row instead of overflowing the current one.
+ */
+export function insertDuplicatedSetupField(
+  sections: SetupFormSection[],
+  sourceFieldId: string,
+  duplicate: FormField,
+): SetupFormSection[] {
+  const next = sections.map((section) => ({
+    ...section,
+    rows: section.rows.map((row) => ({ ...row, fields: [...row.fields] })),
+  }));
+
+  const copy: FormField = {
+    ...duplicate,
+    width: normalizeBuilderWidthUnits(duplicate.width),
+  };
+  const location = findSetupFieldRow(next, sourceFieldId);
+
+  if (!location) {
+    if (next[0]) {
+      next[0].rows.push({ id: createSetupRowId(), fields: [copy] });
+    }
+    return next.length ? next : buildDefaultSetupSections([copy]);
+  }
+
+  const section = next.find((item) => item.id === location.sectionId);
+  const row = section?.rows.find((item) => item.id === location.rowId);
+  if (!section || !row) {
+    return next;
+  }
+
+  const index = row.fields.findIndex((item) => item.id === sourceFieldId);
+  const remaining = rowRemainingGridUnits(row.fields);
+
+  if (remaining >= copy.width!) {
+    row.fields.splice(index + 1, 0, copy);
+    return next;
+  }
+
+  const rowIndex = section.rows.findIndex((item) => item.id === row.id);
+  section.rows.splice(Math.max(rowIndex, 0) + 1, 0, {
+    id: createSetupRowId(),
+    fields: [copy],
+  });
+  return next;
 }
 
 export function clampWidthForRemaining(

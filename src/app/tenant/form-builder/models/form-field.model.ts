@@ -2,6 +2,7 @@ import {
   FieldCondition,
   ValueSource,
 } from '../../../shared/conditional-logic';
+import { FieldRepeaterConfig } from '../utils/repeater-field.utils';
 import { ImageFile } from './image-file.model';
 
 export type FieldType =
@@ -89,6 +90,11 @@ export interface FormField {
    * Independent of Conditional Logic `condition` actions.
    */
   defaultValueSource?: ValueSource | null;
+  /**
+   * Optional repeater configuration (Phase 1 — persistence only).
+   * When enabled, runtime will later expand instances from `sourceFieldId`.
+   */
+  repeaterConfig?: FieldRepeaterConfig | null;
   validations?: Record<string, unknown>;
   width?: number;
   order?: number;

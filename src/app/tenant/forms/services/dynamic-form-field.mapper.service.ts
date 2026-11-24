@@ -29,6 +29,7 @@ import {
   cloneImageFiles,
   sanitizeImageFieldConfig,
 } from '../../form-builder/utils/image-field.utils';
+import { cloneRepeaterConfig } from '../../form-builder/utils/repeater-field.utils';
 import { FormStorageService } from './form-storage.service';
 import { TenantSessionService } from '../../../services/tenant-session.service';
 
@@ -125,6 +126,7 @@ export class DynamicFormFieldMapperService {
       defaultValueSource: field.defaultValueSource
         ? JSON.parse(JSON.stringify(field.defaultValueSource))
         : null,
+      repeaterConfig: cloneRepeaterConfig(field.repeaterConfig),
       required: field.required,
       placeholder: field.placeholder,
       width: field.width ?? 12,

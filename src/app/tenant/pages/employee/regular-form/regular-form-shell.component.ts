@@ -47,6 +47,11 @@ export class RegularFormShellComponent {
   readonly submitting = input(false);
   readonly interactionMode = input.required<AssignmentFormMode>();
   /**
+   * When false, Voice Reply / Typeform mode is unavailable (e.g. repeater forms).
+   * Defaults to true so preview and non-repeater assignments are unchanged.
+   */
+  readonly voiceReplySupported = input(true);
+  /**
    * Admin Form Template Preview: same Regular Form layout, no mode switcher,
    * interactive fields for local testing, decorative disabled submit, and
    * preview-oriented chrome. Employee fill leaves this false.
@@ -92,6 +97,9 @@ export class RegularFormShellComponent {
 
   setInteractionMode(mode: AssignmentFormMode): void {
     if (mode === this.interactionMode()) {
+      return;
+    }
+    if (mode === 'manual' && !this.voiceReplySupported()) {
       return;
     }
 

@@ -8,6 +8,7 @@ import type {
   RangeTimeFormat,
 } from '../tenant/form-builder/models/form-field.model';
 import type { ImageFile } from '../tenant/form-builder/models/image-file.model';
+import type { FieldRepeaterConfig } from '../tenant/form-builder/utils/repeater-field.utils';
 
 export type DynamicFieldType =
   | 'text'
@@ -60,6 +61,8 @@ export interface DynamicField {
   defaultValue?: unknown;
   /** Dynamic default source — resolved at form init, not via Conditional Logic. */
   defaultValueSource?: ValueSource | null;
+  /** Optional repeater configuration (Phase 2 runtime expands eligible targets). */
+  repeaterConfig?: FieldRepeaterConfig | null;
   required?: boolean;
   placeholder?: string;
   width?: number;

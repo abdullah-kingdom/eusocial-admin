@@ -158,12 +158,13 @@
           [canFill]="canFill()"
           [submitting]="submitting()"
           [interactionMode]="mode"
+          [voiceReplySupported]="voiceReplySupported()"
           (interactionModeChange)="selectInteractionMode($event)"
           (exitRequested)="goBack()"
           (submitRequested)="submitForm()"
         ></app-regular-form-shell>
-      } @else {
-        <!-- Regular Form: Typeform shell. -->
+      } @else if (voiceReplySupported()) {
+        <!-- Typeform / Voice Reply shell — blocked for repeater assignments. -->
         <app-typeform-fill-shell
           class="block h-full min-h-0"
           [fields]="mergedFields()"
@@ -178,6 +179,22 @@
           (exitRequested)="goBack()"
           (submitRequested)="submitForm()"
         ></app-typeform-fill-shell>
+      } @else {
+        <div class="rounded-xl border border-[#E8E8E8] bg-white px-6 py-12 text-center shadow-sm">
+          <p class="m-0 text-base font-medium text-[#161616] font-ibm">
+            This assignment includes repeater fields
+          </p>
+          <p class="mt-2 m-0 text-sm text-[#6F6F6F] font-ibm">
+            Voice Reply is not available for this form. Continue using Regular Form.
+          </p>
+          <button
+            type="button"
+            class="mt-5 inline-flex items-center justify-center rounded-lg bg-[#161616] px-4 py-2.5 text-sm font-medium text-white font-ibm hover:bg-[#2a2a2a]"
+            (click)="selectInteractionMode('normal')"
+          >
+            Continue in Regular Form
+          </button>
+        </div>
       }
     } @else if (interactionMode() !== null && canFill() && !hasForm()) {
       <div class="rounded-xl border border-[#E8E8E8] bg-white px-6 py-12 text-center shadow-sm">
