@@ -174,7 +174,8 @@ export function hydrateSetupSections(
           used.add(id);
         }
       }
-      if (rowFields.length) {
+      // Keep empty rows only when the stored row listed no fields (section chrome).
+      if (rowFields.length || fieldIds.length === 0) {
         rows.push({
           id: String(row['id'] || createSetupRowId()),
           fields: rowFields,
@@ -182,13 +183,12 @@ export function hydrateSetupSections(
       }
     }
 
-    if (rows.length) {
-      sections.push({
-        id: String(section['id'] || createSetupSectionId()),
-        name: typeof section['name'] === 'string' ? section['name'] : '',
-        rows,
-      });
-    }
+    // Preserve empty sections so multi-section layouts round-trip correctly.
+    sections.push({
+      id: String(section['id'] || createSetupSectionId()),
+      name: typeof section['name'] === 'string' ? section['name'] : '',
+      rows: rows.length ? rows : [{ id: createSetupRowId(), fields: [] }],
+    });
   }
 
   // Append any fields missing from stored layout (do not drop them).
@@ -241,17 +241,246 @@ export function removeFieldFromSetupSections(
   sections: SetupFormSection[],
   fieldId: string,
 ): SetupFormSection[] {
-  return sections
-    .map((section) => ({
-      ...section,
-      rows: section.rows
-        .map((row) => ({
-          ...row,
-          fields: row.fields.filter((field) => field.id !== fieldId),
-        }))
-        .filter((row) => row.fields.length > 0),
-    }))
-    .filter((section) => section.rows.length > 0);
+  const next = sections.map((section) => ({
+    ...section,
+    rows: section.rows
+      .map((row) => ({
+        ...row,
+        fields: row.fields.filter((field) => field.id !== fieldId),
+      }))
+      .filter((row) => row.fields.length > 0),
+  }));
+
+  // Keep every section (even empty) so Setup section chrome remains stable.
+  return ensureSetupSectionsHaveRows(next.length ? next : buildDefaultSetupSections([]));
+}
+
+/** Ensure each section has at least one droppable row. */
+export function ensureSetupSectionsHaveRows(
+  sections: SetupFormSection[],
+): SetupFormSection[] {
+  if (!sections.length) {
+    return buildDefaultSetupSections([]);
+  }
+  return sections.map((section) => ({
+    ...section,
+    rows: section.rows.length
+      ? section.rows
+      : [{ id: createSetupRowId(), fields: [] }],
+  }));
+}
+
+export function countSetupSectionFields(section: SetupFormSection): number {
+  return section.rows.reduce((sum, row) => sum + row.fields.length, 0);
+}
+
+export function countSetupSectionRows(section: SetupFormSection): number {
+  return section.rows.filter((row) => row.fields.length > 0).length;
+}
+
+export function createEmptySetupSection(name = ''): SetupFormSection {
+  return {
+    id: createSetupSectionId(),
+    name: name.trim(),
+    rows: [{ id: createSetupRowId(), fields: [] }],
+  };
+}
+
+export function addSetupSection(
+  sections: SetupFormSection[],
+  name: string,
+): SetupFormSection[] {
+  return ensureSetupSectionsHaveRows([
+    ...sections,
+    createEmptySetupSection(name),
+  ]);
+}
+
+export function renameSetupSection(
+  sections: SetupFormSection[],
+  sectionId: string,
+  name: string,
+): SetupFormSection[] {
+  const nextName = name.trim();
+  return sections.map((section) =>
+    section.id === sectionId ? { ...section, name: nextName } : section,
+  );
+}
+
+/**
+ * Remove a section. Fields are discarded with the section (same as Form Template).
+ * Always leaves at least one empty section.
+ */
+export function removeSetupSection(
+  sections: SetupFormSection[],
+  sectionId: string,
+): SetupFormSection[] {
+  const next = sections.filter((section) => section.id !== sectionId);
+  return ensureSetupSectionsHaveRows(
+    next.length ? next : [createEmptySetupSection('')],
+  );
+}
+
+export function duplicateSetupSection(
+  sections: SetupFormSection[],
+  sectionId: string,
+): SetupFormSection[] {
+  const source = sections.find((section) => section.id === sectionId);
+  if (!source) {
+    return sections;
+  }
+
+  const baseName = source.name.trim() || 'Section';
+  let name = `${baseName} Copy`;
+  let suffix = 2;
+  const names = new Set(
+    sections.map((section) => section.name.trim().toLocaleLowerCase()),
+  );
+  while (names.has(name.toLocaleLowerCase())) {
+    name = `${baseName} Copy ${suffix}`;
+    suffix += 1;
+  }
+
+  const duplicated: SetupFormSection = {
+    id: createSetupSectionId(),
+    name,
+    rows: source.rows.map((row) => ({
+      id: createSetupRowId(),
+      fields: row.fields.map((field) => ({
+        ...field,
+        id: generateFieldId(),
+        name: `${field.name || field.type}_copy`,
+      })),
+    })),
+  };
+
+  const index = sections.findIndex((section) => section.id === sectionId);
+  const next = [...sections];
+  next.splice(index >= 0 ? index + 1 : next.length, 0, duplicated);
+  return ensureSetupSectionsHaveRows(next);
+}
+
+export function reorderSetupSections(
+  sections: SetupFormSection[],
+  fromIndex: number,
+  toIndex: number,
+): SetupFormSection[] {
+  if (
+    fromIndex === toIndex ||
+    fromIndex < 0 ||
+    toIndex < 0 ||
+    fromIndex >= sections.length ||
+    toIndex >= sections.length
+  ) {
+    return sections;
+  }
+  const next = [...sections];
+  const [moved] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, moved);
+  return next;
+}
+
+export function formatSetupSectionMeta(
+  section: SetupFormSection,
+  index: number,
+): string {
+  const rows = countSetupSectionRows(section);
+  const fields = countSetupSectionFields(section);
+  const rowLabel = rows === 1 ? 'ROW' : 'ROWS';
+  const fieldLabel = fields === 1 ? 'FIELD' : 'FIELDS';
+  return `SECTION ${index + 1} • ${rows} ${rowLabel} • ${fields} ${fieldLabel}`;
+}
+
+/** True when drag data is a Setup section (not a palette/canvas field). */
+export function isSetupSectionDragData(data: unknown): boolean {
+  if (!data || typeof data !== 'object') {
+    return false;
+  }
+  const candidate = data as Partial<SetupFormSection>;
+  // Fields/palette items never carry a rows array; sections always do.
+  return typeof candidate.id === 'string' && Array.isArray(candidate.rows);
+}
+
+/**
+ * Remove a field from every row except an optional drop-target row, then prune
+ * emptied rows. The keep row must survive even when it is still empty so the
+ * caller can insert into that same row object (empty 2nd+ sections).
+ */
+export function removeSetupFieldFromOtherRows(
+  sections: SetupFormSection[],
+  fieldId: string,
+  keepSectionId: string,
+  keepRowId: string | null,
+): void {
+  for (const section of sections) {
+    for (const row of section.rows) {
+      if (section.id === keepSectionId && row.id === keepRowId) {
+        continue;
+      }
+      row.fields = row.fields.filter((field) => field.id !== fieldId);
+    }
+
+    section.rows = section.rows.filter((row) => {
+      if (
+        section.id === keepSectionId &&
+        keepRowId != null &&
+        row.id === keepRowId
+      ) {
+        return true;
+      }
+      return row.fields.length > 0;
+    });
+
+    if (!section.rows.length) {
+      section.rows.push({ id: createSetupRowId(), fields: [] });
+    }
+  }
+}
+
+/**
+ * Insert a field into an existing (possibly empty) row after relocating it.
+ * Mirrors the Setup canvas onRowDrop path for empty-section drops.
+ */
+export function insertFieldIntoSetupRow(
+  sections: SetupFormSection[],
+  sectionId: string,
+  rowId: string,
+  field: FormField,
+  insertIndex?: number,
+): SetupFormSection[] {
+  const next = sections.map((section) => ({
+    ...section,
+    rows: section.rows.map((row) => ({
+      ...row,
+      fields: [...row.fields],
+    })),
+  }));
+
+  const targetSection = next.find((section) => section.id === sectionId);
+  const targetRow = targetSection?.rows.find((row) => row.id === rowId);
+  if (!targetSection || !targetRow) {
+    return sections;
+  }
+
+  removeSetupFieldFromOtherRows(next, field.id, sectionId, rowId);
+
+  // Target row must still be the same object identity after prune.
+  const kept = targetSection.rows.find((row) => row.id === rowId);
+  if (!kept) {
+    return sections;
+  }
+
+  const siblings = [...kept.fields];
+  const index = Math.min(
+    Math.max(insertIndex ?? siblings.length, 0),
+    siblings.length,
+  );
+  siblings.splice(index, 0, {
+    ...field,
+    width: normalizeBuilderWidthUnits(field.width),
+  });
+  kept.fields = siblings;
+  return next;
 }
 
 export function findSetupFieldRow(

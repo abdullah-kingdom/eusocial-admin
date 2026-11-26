@@ -1,0 +1,30 @@
+:host {
+  display: block;
+}
+
+.setup-layout-section-placeholder {
+  min-height: 3.25rem;
+  border-radius: 0.75rem;
+  border: 1px dashed #d1d5db;
+  background: #fafafa;
+}
+
+.setup-layout-empty-row.cdk-drop-list-dragging,
+.setup-layout-empty-row.cdk-drop-list-receiving {
+  border-color: #ff9015 !important;
+  background: #fff5eb !important;
+}
+
+.setup-layout-canvas.cdk-drop-list-dragging .setup-layout-section:not(.cdk-drag-placeholder) {
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.setup-layout-section.cdk-drag-preview {
+  box-sizing: border-box;
+  border-radius: 0.75rem;
+  box-shadow: 0 12px 28px -12px rgba(15, 23, 42, 0.35);
+}
+
+.setup-layout-section.cdk-drag-animating {
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}

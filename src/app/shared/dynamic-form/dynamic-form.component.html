@@ -10,7 +10,8 @@
   (submit)="$event.preventDefault()"
 >
   <div
-    class="grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-6"
+    class="grid grid-cols-1 gap-5 md:gap-6"
+    [class.md:grid-cols-2]="!typeformMode() && !isSectionedLayout()"
     [class.md:grid-cols-1]="typeformMode()"
     [class.md:grid-cols-12]="isSectionedLayout()"
   >
