@@ -45,6 +45,9 @@
   <app-setup-entity-header
     parentLabel="Vendors"
     [title]="pageTitle()"
+    [editMode]="isEditMode()"
+    [avatarInitials]="pageAvatarInitials()"
+    [subtitle]="pageSubtitle()"
     [showActiveToggle]="!builderVisible()"
     [active]="vendorActive()"
     [showBuilderAction]="!builderVisible()"

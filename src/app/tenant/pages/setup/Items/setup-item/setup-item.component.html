@@ -45,6 +45,9 @@
   <app-setup-entity-header
     parentLabel="Items"
     [title]="pageTitle()"
+    [editMode]="isEditMode()"
+    [avatarInitials]="pageAvatarInitials()"
+    [subtitle]="pageSubtitle()"
     [showActiveToggle]="!builderVisible()"
     [active]="itemActive()"
     [showBuilderAction]="!builderVisible()"

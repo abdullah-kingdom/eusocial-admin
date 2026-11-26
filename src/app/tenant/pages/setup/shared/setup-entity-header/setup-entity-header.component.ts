@@ -22,8 +22,16 @@ import {
 export class SetupEntityHeaderComponent {
   /** Breadcrumb parent label (e.g. Users). */
   @Input({ required: true }) parentLabel!: string;
-  /** Page title / breadcrumb current (e.g. Add user). */
+  /** Page title / breadcrumb current (e.g. Add user / Maria Lopez). */
   @Input({ required: true }) title!: string;
+
+  /**
+   * Edit-existing entry layout: avatar initials + metadata subtitle
+   * (Figma Edit page topbar). Leave false for Add / create pages.
+   */
+  @Input() editMode = false;
+  @Input() avatarInitials = '';
+  @Input() subtitle = '';
 
   @Input() showActiveToggle = false;
   @Input() active = true;

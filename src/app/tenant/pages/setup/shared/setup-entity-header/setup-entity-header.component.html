@@ -1,4 +1,7 @@
-<header class="setup-entity-header">
+<header
+  class="setup-entity-header"
+  [class.setup-entity-header--edit]="editMode"
+>
   <nav class="setup-entity-header__breadcrumb" aria-label="Breadcrumb">
     <button
       type="button"
@@ -12,24 +15,38 @@
   </nav>
 
   <div class="setup-entity-header__title-row">
-    <h1 class="setup-entity-header__title">{{ title }}</h1>
-
-    @if (showActiveToggle) {
-      <button
-        type="button"
-        class="setup-entity-header__active"
-        [class.setup-entity-header__active--on]="active"
-        role="switch"
-        [attr.aria-checked]="active"
-        [attr.aria-label]="active ? 'Active' : 'Inactive'"
-        (click)="onToggleActive()"
-      >
-        <span class="setup-entity-header__active-switch" aria-hidden="true">
-          <span class="setup-entity-header__active-knob"></span>
-        </span>
-        <span class="setup-entity-header__active-label">Active</span>
-      </button>
+    @if (editMode && avatarInitials) {
+      <div class="setup-entity-header__avatar" aria-hidden="true">
+        {{ avatarInitials }}
+      </div>
     }
+
+    <div class="setup-entity-header__identity">
+      <div class="setup-entity-header__identity-main">
+        <h1 class="setup-entity-header__title">{{ title }}</h1>
+
+        @if (showActiveToggle) {
+          <button
+            type="button"
+            class="setup-entity-header__active"
+            [class.setup-entity-header__active--on]="active"
+            role="switch"
+            [attr.aria-checked]="active"
+            [attr.aria-label]="active ? 'Active' : 'Inactive'"
+            (click)="onToggleActive()"
+          >
+            <span class="setup-entity-header__active-switch" aria-hidden="true">
+              <span class="setup-entity-header__active-knob"></span>
+            </span>
+            <span class="setup-entity-header__active-label">Active</span>
+          </button>
+        }
+      </div>
+
+      @if (editMode && subtitle) {
+        <p class="setup-entity-header__subtitle">{{ subtitle }}</p>
+      }
+    </div>
   </div>
 
   <div class="setup-entity-header__actions">
