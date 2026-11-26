@@ -72,6 +72,8 @@ export class SetupVendorComponent {
   readonly fillLayoutStored = signal<unknown[]>([]);
   readonly vendorId = signal('');
   readonly latestFormValue = signal<DynamicFormValue>({});
+  /** Header Active control (visual only; does not change API payload). */
+  readonly vendorActive = signal(true);
 
   readonly builderVisible = signal(false);
   readonly builderLoading = signal(false);
@@ -145,6 +147,9 @@ export class SetupVendorComponent {
   });
 
   readonly hasFormFields = computed(() => this.formFields().length > 0);
+  readonly pageTitle = computed(() =>
+    this.vendorId() ? 'Edit vendor' : 'Add vendor',
+  );
   readonly showEmptyState = computed(
     () => !this.loading() && !this.hasFormFields() && !this.builderVisible()
   );
@@ -846,5 +851,9 @@ export class SetupVendorComponent {
 
   goToVendorListing(): void {
     this.router.navigate(['/vendors']);
+  }
+
+  onVendorActiveChange(active: boolean): void {
+    this.vendorActive.set(active === true);
   }
 }

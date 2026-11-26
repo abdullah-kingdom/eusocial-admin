@@ -1,0 +1,62 @@
+<header class="setup-entity-header">
+  <nav class="setup-entity-header__breadcrumb" aria-label="Breadcrumb">
+    <button
+      type="button"
+      class="setup-entity-header__breadcrumb-link"
+      (click)="onParentClick()"
+    >
+      {{ parentLabel }}
+    </button>
+    <span class="setup-entity-header__breadcrumb-sep" aria-hidden="true">→</span>
+    <span class="setup-entity-header__breadcrumb-current">{{ title }}</span>
+  </nav>
+
+  <div class="setup-entity-header__title-row">
+    <h1 class="setup-entity-header__title">{{ title }}</h1>
+
+    @if (showActiveToggle) {
+      <button
+        type="button"
+        class="setup-entity-header__active"
+        [class.setup-entity-header__active--on]="active"
+        role="switch"
+        [attr.aria-checked]="active"
+        [attr.aria-label]="active ? 'Active' : 'Inactive'"
+        (click)="onToggleActive()"
+      >
+        <span class="setup-entity-header__active-switch" aria-hidden="true">
+          <span class="setup-entity-header__active-knob"></span>
+        </span>
+        <span class="setup-entity-header__active-label">Active</span>
+      </button>
+    }
+  </div>
+
+  <div class="setup-entity-header__actions">
+    @if (showBuilderAction) {
+      <button
+        type="button"
+        class="setup-entity-header__builder-btn"
+        (click)="onBuilderClick()"
+      >
+        <svg
+          class="setup-entity-header__builder-btn-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          aria-hidden="true"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M16.862 3.487a2.1 2.1 0 0 1 2.97 2.97L8.25 18.04 3 19.5l1.46-5.25L16.862 3.487Z"
+          />
+        </svg>
+        {{ builderActionLabel }}
+      </button>
+    }
+
+    <ng-content select="[setupHeaderActions]"></ng-content>
+  </div>
+</header>

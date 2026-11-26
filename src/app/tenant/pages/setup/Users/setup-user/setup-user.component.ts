@@ -72,6 +72,8 @@ export class SetupUserComponent {
   readonly fillLayoutStored = signal<unknown[]>([]);
   readonly userId = signal('');
   readonly latestFormValue = signal<DynamicFormValue>({});
+  /** Header Active control (visual state for Add/Edit user; does not change API payload). */
+  readonly userActive = signal(true);
 
   readonly builderVisible = signal(false);
   readonly builderLoading = signal(false);
@@ -148,6 +150,7 @@ export class SetupUserComponent {
   readonly showEmptyState = computed(
     () => !this.loading() && !this.hasFormFields() && !this.builderVisible()
   );
+  readonly pageTitle = computed(() => (this.userId() ? 'Edit user' : 'Add user'));
   readonly showUserFormLoader = computed(
     () => this.loading() && !this.builderVisible()
   );
@@ -854,6 +857,10 @@ export class SetupUserComponent {
 
   goToUserListing(): void {
     this.router.navigate(['/users']);
+  }
+
+  onUserActiveChange(active: boolean): void {
+    this.userActive.set(active === true);
   }
 
 }

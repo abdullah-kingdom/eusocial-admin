@@ -74,6 +74,8 @@ export class SetupItemComponent {
   readonly fillLayoutStored = signal<unknown[]>([]);
   readonly itemId = signal('');
   readonly latestFormValue = signal<DynamicFormValue>({});
+  /** Header Active control (visual only; does not change API payload). */
+  readonly itemActive = signal(true);
 
   readonly builderVisible = signal(false);
   readonly builderLoading = signal(false);
@@ -147,6 +149,7 @@ export class SetupItemComponent {
   });
 
   readonly hasFormFields = computed(() => this.formFields().length > 0);
+  readonly pageTitle = computed(() => (this.itemId() ? 'Edit item' : 'Add item'));
   readonly showEmptyState = computed(
     () => !this.loading() && !this.hasFormFields() && !this.builderVisible()
   );
@@ -885,6 +888,10 @@ export class SetupItemComponent {
 
   goToItemListing(): void {
     this.router.navigate(['/items']);
+  }
+
+  onItemActiveChange(active: boolean): void {
+    this.itemActive.set(active === true);
   }
 
 }

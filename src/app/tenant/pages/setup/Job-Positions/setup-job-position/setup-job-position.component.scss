@@ -1,3 +1,10 @@
 :host {
   display: block;
 }
+
+.setup-job-header__steps {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}

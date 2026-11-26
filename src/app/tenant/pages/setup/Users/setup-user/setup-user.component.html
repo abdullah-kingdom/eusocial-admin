@@ -41,25 +41,17 @@
   (closed)="closePreviewModal()"
 ></app-form-preview-modal>
 
-<div class="tenant-user-page min-h-screen bg-[#F8F9FA] p-4 sm:p-6">
-  <div class="tenant-user-page__header">
-    <h2
-      class="cursor-pointer font-ibm text-[16px] font-semibold tracking-tight text-[#ea580c] hover:underline"
-      (click)="goToUserListing()"
-    >
-      Create / View Users
-    </h2>
-
-    @if (!builderVisible()) {
-      <button
-        type="button"
-        class="btn btn--cancel"
-        (click)="onEditForm()"
-      >
-        Edit Builder Form
-      </button>
-    }
-  </div>
+<div class="tenant-user-page min-h-screen bg-[#F8F9FA] p-4 sm:p-6 font-ibm">
+  <app-setup-entity-header
+    parentLabel="Users"
+    [title]="pageTitle()"
+    [showActiveToggle]="!builderVisible()"
+    [active]="userActive()"
+    [showBuilderAction]="!builderVisible()"
+    (parentClick)="goToUserListing()"
+    (activeChange)="onUserActiveChange($event)"
+    (builderClick)="onEditForm()"
+  ></app-setup-entity-header>
 
   @if (!builderVisible()) {
     <div class="tenant-user-view">
