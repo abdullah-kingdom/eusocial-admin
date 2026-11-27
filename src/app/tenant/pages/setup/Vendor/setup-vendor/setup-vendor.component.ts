@@ -45,6 +45,7 @@ import {
   updateFieldInSetupSections,
   type SetupFormSection,
 } from '../../../../forms/utils/setup-form-layout.utils';
+import { buildSetupEntityHeaderIdentity } from '../../shared/setup-entity-header/setup-entity-header.utils';
 
 @Component({
   selector: 'app-setup-vendor',
@@ -72,6 +73,10 @@ export class SetupVendorComponent {
   readonly fillLayoutStored = signal<unknown[]>([]);
   readonly vendorId = signal('');
   readonly latestFormValue = signal<DynamicFormValue>({});
+  /** Raw API record for edit-page header identity (name / meta). */
+  readonly loadedRecord = signal<Record<string, unknown> | null>(null);
+  /** Header Active control (visual only; does not change API payload). */
+  readonly vendorActive = signal(true);
 
   readonly builderVisible = signal(false);
   readonly builderLoading = signal(false);
@@ -145,6 +150,32 @@ export class SetupVendorComponent {
   });
 
   readonly hasFormFields = computed(() => this.formFields().length > 0);
+  readonly isEditMode = computed(() => !!this.vendorId());
+  readonly entityHeaderIdentity = computed(() => {
+    const id = this.vendorId();
+    if (!id) {
+      return null;
+    }
+    return buildSetupEntityHeaderIdentity({
+      entityKind: 'vendor',
+      entityId: id,
+      fields: this.formFields(),
+      record: this.loadedRecord(),
+      formValues: this.latestFormValue(),
+    });
+  });
+  readonly pageTitle = computed(() => {
+    if (!this.isEditMode()) {
+      return 'Add vendor';
+    }
+    return this.entityHeaderIdentity()?.title || 'Edit vendor';
+  });
+  readonly pageAvatarInitials = computed(
+    () => this.entityHeaderIdentity()?.initials || '',
+  );
+  readonly pageSubtitle = computed(
+    () => this.entityHeaderIdentity()?.subtitle || '',
+  );
   readonly showEmptyState = computed(
     () => !this.loading() && !this.hasFormFields() && !this.builderVisible()
   );
@@ -648,7 +679,9 @@ export class SetupVendorComponent {
       .subscribe({
         next: (res: { data: Record<string, unknown> }) => {
           const vendor = { ...res.data };
+          this.loadedRecord.set(vendor);
           const patchData = this.buildVendorPatchData(vendor, this.formFields());
+          this.latestFormValue.set(patchData);
 
           setTimeout(() => {
             this.dynamicForm()?.patchValue(patchData);
@@ -846,5 +879,9 @@ export class SetupVendorComponent {
 
   goToVendorListing(): void {
     this.router.navigate(['/vendors']);
+  }
+
+  onVendorActiveChange(active: boolean): void {
+    this.vendorActive.set(active === true);
   }
 }

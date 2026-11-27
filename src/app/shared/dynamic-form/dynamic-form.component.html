@@ -10,7 +10,8 @@
   (submit)="$event.preventDefault()"
 >
   <div
-    class="grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-6"
+    class="grid grid-cols-1 gap-4 md:gap-5"
+    [class.md:grid-cols-2]="!typeformMode() && !isSectionedLayout()"
     [class.md:grid-cols-1]="typeformMode()"
     [class.md:grid-cols-12]="isSectionedLayout()"
   >
@@ -66,7 +67,7 @@
                   @switch (field.type) {
                     @case ('text') {
                       <input
-                        class="dynamic-control"
+                        class="dynamic-control placeholder:text-[#757575]"
                         type="text"
                         [id]="field.id + '__' + item.id"
                         [formControlName]="item.id"
@@ -76,7 +77,7 @@
                     }
                     @case ('email') {
                       <input
-                        class="dynamic-control"
+                        class="dynamic-control placeholder:text-[#757575]"
                         type="email"
                         [id]="field.id + '__' + item.id"
                         [formControlName]="item.id"
@@ -701,7 +702,7 @@
                 <button
                   type="button"
                   (click)="!isFieldDisabled(field) && selectDropdown.toggle($event)"
-                  class="global-filter__control w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-700 font-ibm focus:outline-none focus:ring-2 focus:ring-[#ea580c]/30 focus:border-[#ea580c] focus:bg-white transition-all duration-150 text-left flex items-center justify-between gap-2"
+                  class="global-filter__control w-full px-3 py-2.5 border border-[#BDBDBD] rounded-[12px] bg-gray-50 text-sm text-gray-700 font-ibm focus:outline-none focus:ring-2 focus:ring-[#ea580c]/30 focus:border-[#ea580c] focus:bg-white transition-all duration-150 text-left flex items-center justify-between gap-2"
                   [class.border-[#ea580c]]="selectDropdown.isOpen"
                   [class.min-h-[42px]]="isMultiSelect(field)"
                   [class.opacity-60]="isFieldDisabled(field)"

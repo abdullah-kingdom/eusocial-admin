@@ -1,12 +1,15 @@
 import { CommonModule } from '@angular/common';
 import {
   ChangeDetectionStrategy,
+  ChangeDetectorRef,
   Component,
+  ElementRef,
   EventEmitter,
   Input,
   Output,
+  ViewChild,
 } from '@angular/core';
-import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
+import { CdkDrag, CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
 import { FormCanvasComponent } from '../../../form-builder/components/form-canvas/form-canvas.component';
 import { FormField } from '../../../form-builder/models/form-field.model';
 import { applyCanvasDrop } from '../../../form-builder/utils/form-field-operations';
@@ -16,9 +19,17 @@ import {
   supportsPlaceholderAutoGeneration,
 } from '../../../form-builder/utils/form-field.factory';
 import {
+  addSetupSection,
   clampWidthForRemaining,
   createSetupRowId,
   defaultSetupNewFieldWidth,
+  duplicateSetupSection,
+  formatSetupSectionMeta,
+  isSetupSectionDragData,
+  removeSetupFieldFromOtherRows,
+  removeSetupSection,
+  renameSetupSection,
+  reorderSetupSections,
   setupRowAddColumnFlexBasis,
   setupRowCanAddColumn,
   setupRowUsedFlexBasis,
@@ -36,6 +47,7 @@ import {
   standalone: true,
   imports: [CommonModule, DragDropModule, FormCanvasComponent],
   templateUrl: './setup-form-layout-canvas.component.html',
+  styleUrl: './setup-form-layout-canvas.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SetupFormLayoutCanvasComponent {
@@ -50,7 +62,24 @@ export class SetupFormLayoutCanvasComponent {
   @Output() selectField = new EventEmitter<FormField>();
   @Output() toggleFieldSelection = new EventEmitter<FormField>();
 
+  @ViewChild('renameInput') renameInput?: ElementRef<HTMLInputElement>;
+
   readonly emptyDropListData: FormField[] = [];
+
+  renamingSectionId: string | null = null;
+  renameDraft = '';
+  private readonly collapsedSectionIds = new Set<string>();
+
+  constructor(private readonly cdr: ChangeDetectorRef) {}
+
+  /**
+   * Only Setup sections may enter the section reorder list.
+   * Rejects field-palette / row-canvas drags so nested field DnD into
+   * the 2nd+ section is not swallowed by the parent drop list
+   * (same pattern as Form Template's sectionDropListEnterPredicate).
+   */
+  readonly sectionDropListEnterPredicate = (drag: CdkDrag) =>
+    isSetupSectionDragData(drag.data);
 
   rowCanvasListId(sectionId: string, rowId: string): string {
     return `setupCanvas_${sectionId}_${rowId}`;
@@ -68,6 +97,9 @@ export class SetupFormLayoutCanvasComponent {
   get connectedDropLists(): string[] {
     const ids: string[] = [this.paletteListId];
     for (const section of this.sections || []) {
+      if (this.isSectionCollapsed(section.id)) {
+        continue;
+      }
       for (const row of section.rows) {
         ids.push(this.rowCanvasListId(section.id, row.id));
         if (this.rowCanAddColumn(row) && !this.interactionsDisabled) {
@@ -84,6 +116,99 @@ export class SetupFormLayoutCanvasComponent {
   /** IDs the palette should connect to (excludes itself). */
   get paletteTargetDropLists(): string[] {
     return this.connectedDropLists.filter((id) => id !== this.paletteListId);
+  }
+
+  sectionMeta(section: SetupFormSection, index: number): string {
+    return formatSetupSectionMeta(section, index);
+  }
+
+  sectionDisplayName(section: SetupFormSection, index: number): string {
+    const name = section.name?.trim();
+    return name || `Section ${index + 1}`;
+  }
+
+  isSectionCollapsed(sectionId: string): boolean {
+    return this.collapsedSectionIds.has(sectionId);
+  }
+
+  toggleSectionCollapsed(sectionId: string): void {
+    if (this.collapsedSectionIds.has(sectionId)) {
+      this.collapsedSectionIds.delete(sectionId);
+    } else {
+      this.collapsedSectionIds.add(sectionId);
+    }
+    this.cdr.markForCheck();
+  }
+
+  addSection(): void {
+    const nextIndex = (this.sections?.length || 0) + 1;
+    const next = addSetupSection(this.cloneSections(), `Section ${nextIndex}`);
+    const created = next[next.length - 1];
+    this.emitSections(next);
+    if (created) {
+      this.startRename(created);
+    }
+  }
+
+  startRename(section: SetupFormSection): void {
+    this.renamingSectionId = section.id;
+    this.renameDraft = section.name?.trim() || '';
+    this.cdr.markForCheck();
+    setTimeout(() => {
+      this.renameInput?.nativeElement?.focus();
+      this.renameInput?.nativeElement?.select();
+    }, 0);
+  }
+
+  cancelRename(): void {
+    this.renamingSectionId = null;
+    this.renameDraft = '';
+    this.cdr.markForCheck();
+  }
+
+  commitRename(sectionId: string): void {
+    const name = this.renameDraft.trim();
+    if (!name) {
+      return;
+    }
+    const duplicate = this.sections.some(
+      (section) =>
+        section.id !== sectionId &&
+        section.name.trim().toLocaleLowerCase() === name.toLocaleLowerCase(),
+    );
+    if (duplicate) {
+      return;
+    }
+    this.emitSections(renameSetupSection(this.cloneSections(), sectionId, name));
+    this.cancelRename();
+  }
+
+  duplicateSection(sectionId: string): void {
+    this.emitSections(duplicateSetupSection(this.cloneSections(), sectionId));
+  }
+
+  deleteSection(sectionId: string): void {
+    if (this.renamingSectionId === sectionId) {
+      this.cancelRename();
+    }
+    this.collapsedSectionIds.delete(sectionId);
+    this.emitSections(removeSetupSection(this.cloneSections(), sectionId));
+  }
+
+  onSectionsDrop(event: CdkDragDrop<SetupFormSection[]>): void {
+    if (event.previousContainer !== event.container) {
+      return;
+    }
+    if (event.previousIndex === event.currentIndex) {
+      return;
+    }
+    this.emitSections(
+      reorderSetupSections(
+        this.cloneSections(),
+        event.previousIndex,
+        event.currentIndex,
+      ),
+    );
   }
 
   rowCanAddColumn(row: SetupFormRow): boolean {
@@ -183,6 +308,21 @@ export class SetupFormLayoutCanvasComponent {
     this.insertFieldAsNewRow(sections, sectionId, null, event);
   }
 
+  /**
+   * Drop onto the empty-row placeholder ("Drag fields here…").
+   * Routes through the same row-insert path as a populated canvas drop.
+   */
+  onEmptyRowDrop(
+    sectionId: string,
+    rowId: string,
+    event: CdkDragDrop<FormField[]>,
+  ): void {
+    if (event.previousContainer === event.container) {
+      return;
+    }
+    this.onRowDrop(sectionId, rowId, event);
+  }
+
   addEmptyRow(sectionId: string): void {
     const sections = this.cloneSections();
     const section = sections.find((item) => item.id === sectionId);
@@ -276,15 +416,7 @@ export class SetupFormLayoutCanvasComponent {
     keepSectionId: string,
     keepRowId: string | null,
   ): void {
-    for (const section of sections) {
-      for (const row of section.rows) {
-        if (section.id === keepSectionId && row.id === keepRowId) {
-          continue;
-        }
-        row.fields = row.fields.filter((field) => field.id !== fieldId);
-      }
-      section.rows = section.rows.filter((row) => row.fields.length > 0);
-    }
+    removeSetupFieldFromOtherRows(sections, fieldId, keepSectionId, keepRowId);
   }
 
   private findRow(

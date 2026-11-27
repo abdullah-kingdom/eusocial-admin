@@ -45,6 +45,7 @@ import {
   updateFieldInSetupSections,
   type SetupFormSection,
 } from '../../../../forms/utils/setup-form-layout.utils';
+import { buildSetupEntityHeaderIdentity } from '../../shared/setup-entity-header/setup-entity-header.utils';
 
 @Component({
   selector: 'app-setup-user',
@@ -72,6 +73,10 @@ export class SetupUserComponent {
   readonly fillLayoutStored = signal<unknown[]>([]);
   readonly userId = signal('');
   readonly latestFormValue = signal<DynamicFormValue>({});
+  /** Raw API record for edit-page header identity (name / meta). */
+  readonly loadedRecord = signal<Record<string, unknown> | null>(null);
+  /** Header Active control (visual state for Add/Edit user; does not change API payload). */
+  readonly userActive = signal(true);
 
   readonly builderVisible = signal(false);
   readonly builderLoading = signal(false);
@@ -147,6 +152,32 @@ export class SetupUserComponent {
   readonly hasFormFields = computed(() => this.formFields().length > 0);
   readonly showEmptyState = computed(
     () => !this.loading() && !this.hasFormFields() && !this.builderVisible()
+  );
+  readonly isEditMode = computed(() => !!this.userId());
+  readonly entityHeaderIdentity = computed(() => {
+    const id = this.userId();
+    if (!id) {
+      return null;
+    }
+    return buildSetupEntityHeaderIdentity({
+      entityKind: 'user',
+      entityId: id,
+      fields: this.formFields(),
+      record: this.loadedRecord(),
+      formValues: this.latestFormValue(),
+    });
+  });
+  readonly pageTitle = computed(() => {
+    if (!this.isEditMode()) {
+      return 'Add user';
+    }
+    return this.entityHeaderIdentity()?.title || 'Edit user';
+  });
+  readonly pageAvatarInitials = computed(
+    () => this.entityHeaderIdentity()?.initials || '',
+  );
+  readonly pageSubtitle = computed(
+    () => this.entityHeaderIdentity()?.subtitle || '',
   );
   readonly showUserFormLoader = computed(
     () => this.loading() && !this.builderVisible()
@@ -656,7 +687,9 @@ export class SetupUserComponent {
             user['password'] = user['plain_password'];
           }
 
+          this.loadedRecord.set(user);
           const patchData = this.buildUserPatchData(user, this.formFields());
+          this.latestFormValue.set(patchData);
 
           setTimeout(() => {
             this.dynamicForm()?.patchValue(patchData);
@@ -854,6 +887,10 @@ export class SetupUserComponent {
 
   goToUserListing(): void {
     this.router.navigate(['/users']);
+  }
+
+  onUserActiveChange(active: boolean): void {
+    this.userActive.set(active === true);
   }
 
 }

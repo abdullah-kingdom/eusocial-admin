@@ -1,0 +1,221 @@
+/**
+ * Create/Edit fill-form chrome for Setup User, Item, and Vendor.
+ * Targets app-dynamic-form section headings and row alignment to match
+ * the reference Create Page (uppercase section labels + 12-col rows).
+ * Scoped under .tenant-user-view so the Form Builder is untouched.
+ */
+
+.tenant-user-view {
+  /* Match reference white card: clean surface, no heavy gradient/shadow. */
+  ::ng-deep .dynamic-form {
+    border: 1px solid #e5e7eb;
+    border-radius: 1rem;
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+    padding: 1.25rem;
+
+    @media (min-width: 640px) {
+      padding: 1.5rem 1.75rem;
+    }
+
+    @media (min-width: 1024px) {
+      padding: 1.75rem 2rem;
+    }
+  }
+
+  ::ng-deep .rf-form-section-heading {
+    grid-column: 1 / -1;
+    margin: 1.75rem 0 0.35rem;
+  }
+
+  ::ng-deep .rf-form-section-heading:first-child {
+    margin-top: 0;
+  }
+
+  ::ng-deep .rf-form-section__title {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: 0.96px;
+    text-transform: uppercase;
+    color: #5E5E5E;
+  }
+
+  /* Force each stored builder row onto a new CSS grid row. */
+  ::ng-deep .rf-row-start {
+    grid-column-start: 1;
+  }
+
+  /*
+   * Align labels across a row (same start line as Regular Form shell).
+   * Labels stay above their own control; controls share a baseline.
+   */
+  ::ng-deep .field-shell:has(.field-label) {
+    display: grid;
+    grid-template-rows: subgrid;
+    grid-row: span 2;
+    align-self: stretch;
+    row-gap: 0.5rem;
+  }
+
+  ::ng-deep .field-shell:has(.field-label) > .form-group {
+    display: contents;
+  }
+
+  ::ng-deep .field-shell:has(.field-label) .field-label {
+    grid-row: 1;
+    align-self: end;
+  }
+
+  ::ng-deep .field-shell:has(.field-label) .field-control-stack {
+    grid-row: 2;
+    min-width: 0;
+  }
+
+  ::ng-deep .field-label {
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    color: #161616;
+  }
+
+  ::ng-deep .dynamic-control {
+    border-radius: 0.5rem;
+    border-color: #e5e7eb;
+    min-height: 2.625rem;
+    padding: 0.625rem 0.875rem;
+    background: #ffffff;
+
+    &:hover {
+      border-color: #d1d5db;
+      background: #ffffff;
+    }
+
+    &:focus {
+      border-color: #ff9015;
+      box-shadow: 0 0 0 3px rgba(255, 144, 21, 0.16);
+    }
+  }
+
+  ::ng-deep .global-filter__control {
+    border-radius: 10px;
+    background: #ffffff;
+    min-height: 2.625rem;
+  }
+
+  /*
+   * Radio → Figma segmented control (Role / Is Active, etc.)
+   * Gray track + white raised pill for the selected option.
+   * Scoped here only; checkboxes and other controls are unchanged.
+   */
+  ::ng-deep .dynamic-form .option-group.option-group--radio {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 0.125rem;
+    width: 100%;
+    min-height: 2.8rem;
+    padding: 0.25rem;
+    margin: 0;
+    border: none;
+    border-radius: 0.5rem;
+    background: #f3f4f6;
+  }
+
+  ::ng-deep .dynamic-form .option-group--radio .option-item.option-item--radio {
+    position: relative;
+    display: flex !important;
+    flex: 1 1 0;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    min-width: 0;
+    min-height: 2rem;
+    margin: 0;
+    padding: 0.375rem 0.75rem;
+    border: none !important;
+    border-radius: 0.375rem;
+    background: transparent !important;
+    box-shadow: none !important;
+    transform: none !important;
+    transition:
+      background-color 140ms ease,
+      box-shadow 140ms ease,
+      color 140ms ease;
+
+    &:hover {
+      border: none !important;
+      background: transparent !important;
+      box-shadow: none !important;
+      transform: none !important;
+    }
+
+    &:has(> .option-input:checked) {
+      background: #ffffff !important;
+      box-shadow:
+        0 1px 2px rgb(15 23 42 / 10%),
+        0 1px 1px rgb(15 23 42 / 4%) !important;
+
+      .option-label {
+        color: #111827;
+        font-weight: 700;
+      }
+    }
+  }
+
+  /* Native radio is the hit target; visually hidden so the pill is the UI. */
+  ::ng-deep .dynamic-form .option-group--radio .option-input {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+    accent-color: transparent;
+  }
+
+  ::ng-deep .dynamic-form .option-group--radio .option-label {
+    position: relative;
+    z-index: 1;
+    margin: 0;
+    padding: 0;
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.25;
+    color: #4b5563;
+    text-align: center;
+    pointer-events: none;
+    user-select: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .tenant-user-view {
+    ::ng-deep .dynamic-form .option-group.option-group--radio {
+      flex-wrap: wrap;
+    }
+  }
+}
+
+.tenant-user-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .tenant-user-actions {
+    justify-content: stretch;
+
+    .btn {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+  }
+}

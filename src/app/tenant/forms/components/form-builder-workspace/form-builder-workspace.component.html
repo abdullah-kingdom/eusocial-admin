@@ -171,7 +171,17 @@
       [class.py-2.5]="setupChrome"
       [class.sm:px-3]="setupChrome"
     >
-      <div [class.hidden]="activeTab !== 'fields'">
+      <!--
+        Setup chrome: if Settings is active but nothing is selected, keep the
+        palette visible (matches the "Add a field" header). Otherwise users can
+        get stuck unable to drag fields into empty 2nd+ sections.
+      -->
+      <div
+        [class.hidden]="
+          activeTab !== 'fields' &&
+          !(setupChrome && activeTab === 'settings' && !selectedFieldId)
+        "
+      >
         <app-builder
           [dropListId]="paletteListId"
           [connectedDropLists]="resolvedPaletteConnectedDropLists"
@@ -188,7 +198,7 @@
         ></app-form-versions-panel>
       }
 
-      <div [class.hidden]="activeTab !== 'settings' || interactionLocked" class="space-y-4">
+      <div [class.hidden]="activeTab !== 'settings' || interactionLocked || !selectedField" class="space-y-4">
         @if (selectedField) {
           <app-field-settings
             [field]="selectedField"
@@ -205,15 +215,17 @@
             (loadingChange)="dynamicOptionsLoadingChange.emit($event)"
             (closePanel)="closeSettingsPanel()"
           ></app-field-settings>
-        } @else {
-          <div class="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
-            Click a field on the canvas to edit its settings.
-            @if (hiddenFields.length) {
-              <span> Or pick a hidden field above to re-enable it.</span>
-            }
-          </div>
         }
       </div>
+
+      @if (!setupChrome && activeTab === 'settings' && !selectedField && !interactionLocked) {
+        <div class="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
+          Click a field on the canvas to edit its settings.
+          @if (hiddenFields.length) {
+            <span> Or pick a hidden field above to re-enable it.</span>
+          }
+        </div>
+      }
     </div>
 
     @if (setupChrome && !(activeTab === 'settings' && selectedFieldId) && activeTab !== 'versions') {

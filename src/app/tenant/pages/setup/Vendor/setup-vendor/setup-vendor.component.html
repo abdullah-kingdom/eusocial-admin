@@ -41,28 +41,23 @@
   (closed)="closePreviewModal()"
 ></app-form-preview-modal>
 
-<div class="tenant-user-page min-h-screen bg-[#F8F9FA] p-4 sm:p-6">
-  <div class="tenant-user-page__header">
-    <h2
-      class="cursor-pointer font-ibm text-[16px] font-semibold tracking-tight text-[#ea580c] hover:underline"
-      (click)="goToVendorListing()"
-    >
-      Create / View Vendors
-    </h2>
-
-    @if (!builderVisible()) {
-      <button
-        type="button"
-        class="btn btn--cancel"
-        (click)="onEditForm()"
-      >
-        Edit Builder Form
-      </button>
-    }
-  </div>
+<div class="tenant-user-page min-h-screen bg-[#F8F9FA] p-4 sm:p-6 font-ibm">
+  <app-setup-entity-header
+    parentLabel="Vendors"
+    [title]="pageTitle()"
+    [editMode]="isEditMode()"
+    [avatarInitials]="pageAvatarInitials()"
+    [subtitle]="pageSubtitle()"
+    [showActiveToggle]="!builderVisible()"
+    [active]="vendorActive()"
+    [showBuilderAction]="!builderVisible()"
+    (parentClick)="goToVendorListing()"
+    (activeChange)="onVendorActiveChange($event)"
+    (builderClick)="onEditForm()"
+  ></app-setup-entity-header>
 
   @if (!builderVisible()) {
-    <div class="tenant-user-view">
+    <div class="tenant-user-view mx-auto w-full max-w-5xl font-ibm">
       @if (showEmptyState()) {
         <p class="text-[13px] text-[#A8A8A8] font-ibm">
           No form fields configured for vendors. Please set up the form in the Forms Editor.

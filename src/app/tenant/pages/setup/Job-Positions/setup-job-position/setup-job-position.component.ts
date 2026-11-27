@@ -59,7 +59,7 @@ export class SetupJobPositionComponent {
     if (this.currentStep === 2) {
       return 'Configure Permissions';
     }
-    return this.isEditMode ? 'Edit Job Position' : 'Create Job Position';
+    return this.isEditMode ? 'Edit job position' : 'Add job position';
   }
 
   get filteredModules(): JobPermissionModule[] {

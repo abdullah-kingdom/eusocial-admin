@@ -46,6 +46,7 @@ import {
   updateFieldInSetupSections,
   type SetupFormSection,
 } from '../../../../forms/utils/setup-form-layout.utils';
+import { buildSetupEntityHeaderIdentity } from '../../shared/setup-entity-header/setup-entity-header.utils';
 
 @Component({
   selector: 'app-setup-item',
@@ -74,6 +75,10 @@ export class SetupItemComponent {
   readonly fillLayoutStored = signal<unknown[]>([]);
   readonly itemId = signal('');
   readonly latestFormValue = signal<DynamicFormValue>({});
+  /** Raw API record for edit-page header identity (name / meta). */
+  readonly loadedRecord = signal<Record<string, unknown> | null>(null);
+  /** Header Active control (visual only; does not change API payload). */
+  readonly itemActive = signal(true);
 
   readonly builderVisible = signal(false);
   readonly builderLoading = signal(false);
@@ -147,6 +152,32 @@ export class SetupItemComponent {
   });
 
   readonly hasFormFields = computed(() => this.formFields().length > 0);
+  readonly isEditMode = computed(() => !!this.itemId());
+  readonly entityHeaderIdentity = computed(() => {
+    const id = this.itemId();
+    if (!id) {
+      return null;
+    }
+    return buildSetupEntityHeaderIdentity({
+      entityKind: 'item',
+      entityId: id,
+      fields: this.formFields(),
+      record: this.loadedRecord(),
+      formValues: this.latestFormValue(),
+    });
+  });
+  readonly pageTitle = computed(() => {
+    if (!this.isEditMode()) {
+      return 'Add item';
+    }
+    return this.entityHeaderIdentity()?.title || 'Edit item';
+  });
+  readonly pageAvatarInitials = computed(
+    () => this.entityHeaderIdentity()?.initials || '',
+  );
+  readonly pageSubtitle = computed(
+    () => this.entityHeaderIdentity()?.subtitle || '',
+  );
   readonly showEmptyState = computed(
     () => !this.loading() && !this.hasFormFields() && !this.builderVisible()
   );
@@ -651,7 +682,9 @@ export class SetupItemComponent {
         next: (res: { data: Record<string, unknown> }) => {
           const item = { ...res.data };
 
+          this.loadedRecord.set(item);
           const patchData = this.buildItemPatchData(item, this.formFields());
+          this.latestFormValue.set(patchData);
 
           setTimeout(() => {
             this.dynamicForm()?.patchValue(patchData);
@@ -885,6 +918,10 @@ export class SetupItemComponent {
 
   goToItemListing(): void {
     this.router.navigate(['/items']);
+  }
+
+  onItemActiveChange(active: boolean): void {
+    this.itemActive.set(active === true);
   }
 
 }

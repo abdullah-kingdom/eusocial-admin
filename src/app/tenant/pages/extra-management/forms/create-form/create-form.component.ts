@@ -556,10 +556,16 @@ export class CreateFormComponent implements OnInit, CreateFormCanDeactivate {
       .map((field) => field.id),
   );
 
-  /** Fields referenced by at least one Automation Rule. */
+  /**
+   * Fields referenced by at least one *enabled* Automation Rule.
+   * Drives the canvas lightning icon: ON → highlighted, OFF → inactive.
+   */
   readonly fieldsWithAutomationRuleIds = computed(() => {
     const ids = new Set<string>();
     for (const rule of this.logicRules()) {
+      if (!rule.enabled) {
+        continue;
+      }
       for (const id of collectLogicRuleFieldIds(rule)) {
         ids.add(id);
       }
@@ -3034,7 +3040,9 @@ export class CreateFormComponent implements OnInit, CreateFormCanDeactivate {
   }
 
   fieldHasAutomationRules(fieldId: string): boolean {
-    return findLogicRulesUsingField(this.logicRules(), fieldId).length > 0;
+    return findLogicRulesUsingField(this.logicRules(), fieldId).some(
+      (rule) => rule.enabled,
+    );
   }
 
   openLogicOverview(tab: 'logicMap' | 'automationMap' | 'list' = 'list'): void {
