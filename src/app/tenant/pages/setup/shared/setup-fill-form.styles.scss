@@ -34,14 +34,12 @@
 
   ::ng-deep .rf-form-section__title {
     margin: 0;
-    padding: 0 0 0.75rem;
-    border-bottom: 1px solid #e5e7eb;
-    font-size: 0.6875rem;
+    font-size: 12px;
     font-weight: 700;
     line-height: 1.25;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.96px;
     text-transform: uppercase;
-    color: #9ca3af;
+    color: #5E5E5E;
   }
 
   /* Force each stored builder row onto a new CSS grid row. */
@@ -101,7 +99,7 @@
   }
 
   ::ng-deep .global-filter__control {
-    border-radius: 0.5rem;
+    border-radius: 10px;
     background: #ffffff;
     min-height: 2.625rem;
   }
